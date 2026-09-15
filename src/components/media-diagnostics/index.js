@@ -27,7 +27,7 @@ const MediaDiagnostics = () => {
 
   // Media manager initialization preconditions
   const userId = client?.meetingData?.internalUserID;
-  const isClientConnected = client?.connectionStatus?.isConnected;
+  const isClientConnected = client?.sessionState?.connected;
   const isClientLoggedIn = client?.sessionState?.loggedIn;
   const meetingLoading = meeting?.loading;
 
