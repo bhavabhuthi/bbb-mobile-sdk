@@ -1,22 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform, PermissionsAndroid } from 'react-native';
 import { useSelector } from 'react-redux';
-import { getMediaDevices, mediaDevices } from '@livekit/react-native-webrtc';
 import useMeeting from '../../graphql/hooks/useMeeting';
 
 /**
  * Media diagnostics overlay for debugging audio/video issues.
- * Shows bridge types, connection state, and device permissions.
+ * Shows bridge types, connection state, and SFU connectivity.
  *
  * Enable by tapping the hidden debug area (top-right corner, 5 taps).
  */
 const MediaDiagnostics = () => {
   const [visible, setVisible] = useState(false);
   const [tapCount, setTapCount] = useState(0);
-  const [devices, setDevices] = useState({ audioInputs: [], videoInputs: [], audioOutputs: [] });
   const [permissions, setPermissions] = useState({ camera: 'unknown', microphone: 'unknown' });
-  const [getUserMediaResult, setUserMediaResult] = useState('not tested');
   const [sfuTestResult, setSfuTestResult] = useState('not tested');
+  const [sfuTokenResult, setSfuTokenResult] = useState('not tested');
 
   // Get meeting data from GraphQL subscription (correct source for bridge config)
   const { data: meetingData } = useMeeting();
@@ -25,19 +23,6 @@ const MediaDiagnostics = () => {
   const audio = useSelector((state) => state.audio);
   const video = useSelector((state) => state.video);
   const client = useSelector((state) => state.client);
-
-  const loadDevices = useCallback(async () => {
-    try {
-      const mediaDevs = await getMediaDevices();
-      setDevices({
-        audioInputs: mediaDevs.filter((d) => d.kind === 'audioinput'),
-        videoInputs: mediaDevs.filter((d) => d.kind === 'videoinput'),
-        audioOutputs: mediaDevs.filter((d) => d.kind === 'audiooutput'),
-      });
-    } catch (e) {
-      // Media devices not available
-    }
-  }, []);
 
   const checkPermissions = useCallback(async () => {
     if (Platform.OS === 'android') {
@@ -63,58 +48,44 @@ const MediaDiagnostics = () => {
           buttonNeutral: 'Ask Later',
         }
       );
-      const granted = result === PermissionsAndroid.RESULTS.GRANTED;
-      setPermissions((prev) => ({ ...prev, camera: granted ? 'granted' : 'denied' }));
-      if (granted) {
-        loadDevices();
-      }
-    }
-  }, [loadDevices]);
-
-  // Test if getUserMedia actually works (the real test for media functionality)
-  const testGetUserMedia = useCallback(async () => {
-    setUserMediaResult('testing...');
-    try {
-      const stream = await mediaDevices.getUserMedia({
-        audio: true,
-        video: { facingMode: 'user' },
-      });
-      if (stream && stream.getTracks().length > 0) {
-        const tracks = stream.getTracks().map((t) => `${t.kind}:${t.id}`).join(', ');
-        stream.getTracks().forEach((t) => t.stop());
-        setUserMediaResult(`OK: ${tracks}`);
-      } else {
-        setUserMediaResult('FAIL: empty stream');
-      }
-    } catch (e) {
-      setUserMediaResult(`FAIL: ${e.message || e.code || 'unknown error'}`);
+      setPermissions((prev) => ({ ...prev, camera: result === PermissionsAndroid.RESULTS.GRANTED ? 'granted' : 'denied' }));
     }
   }, []);
 
-  // Test WebSocket connection to bbb-webrtc-sfu
+  // Test WebSocket connection to bbb-webrtc-sfu (no auth)
   const testSfuConnection = useCallback(async () => {
     setSfuTestResult('testing...');
     try {
       const host = client?.meetingData?.host;
       if (!host) {
-        setSfuTestResult('FAIL: no host');
+        setSfuTestResult('FAIL: no host in client state');
         return;
       }
       const wsUrl = `wss://${host}/bbb-webrtc-sfu?sessionToken=test`;
-      const ws = new WebSocket(wsUrl);
       const result = await new Promise((resolve) => {
+        let ws;
+        try {
+          ws = new WebSocket(wsUrl);
+        } catch (e) {
+          resolve(`FAIL: ${e.message || 'WebSocket constructor error'}`);
+          return;
+        }
         const timeout = setTimeout(() => {
-          ws.close();
-          resolve('TIMEOUT');
+          try { ws.close(); } catch {}
+          resolve('TIMEOUT (5s)');
         }, 5000);
         ws.onopen = () => {
           clearTimeout(timeout);
-          ws.close();
+          try { ws.close(); } catch {}
           resolve('OK: WebSocket opened');
         };
         ws.onerror = (e) => {
           clearTimeout(timeout);
-          resolve(`FAIL: ${e.message || 'connection error'}`);
+          resolve(`FAIL: ${e.message || 'connection refused/TLS error'}`);
+        };
+        ws.onclose = (e) => {
+          clearTimeout(timeout);
+          resolve(`CLOSED: code=${e.code} reason=${e.reason || 'none'}`);
         };
       });
       setSfuTestResult(result);
@@ -123,12 +94,54 @@ const MediaDiagnostics = () => {
     }
   }, [client]);
 
+  // Test SFU with actual session token
+  const testSfuWithToken = useCallback(async () => {
+    setSfuTokenResult('testing...');
+    try {
+      const host = client?.meetingData?.host;
+      const token = client?.sessionToken;
+      if (!host || !token) {
+        setSfuTokenResult('FAIL: missing host or token');
+        return;
+      }
+      const wsUrl = `wss://${host}/bbb-webrtc-sfu?sessionToken=${token}`;
+      const result = await new Promise((resolve) => {
+        let ws;
+        try {
+          ws = new WebSocket(wsUrl);
+        } catch (e) {
+          resolve(`FAIL: ${e.message || 'constructor error'}`);
+          return;
+        }
+        const timeout = setTimeout(() => {
+          try { ws.close(); } catch {}
+          resolve('TIMEOUT (5s)');
+        }, 5000);
+        ws.onopen = () => {
+          clearTimeout(timeout);
+          try { ws.close(); } catch {}
+          resolve('OK: authenticated WebSocket opened');
+        };
+        ws.onerror = () => {
+          clearTimeout(timeout);
+          resolve('FAIL: server rejected connection');
+        };
+        ws.onclose = (e) => {
+          clearTimeout(timeout);
+          resolve(`CLOSED: code=${e.code}`);
+        };
+      });
+      setSfuTokenResult(result);
+    } catch (e) {
+      setSfuTokenResult(`FAIL: ${e.message || 'unknown error'}`);
+    }
+  }, [client]);
+
   useEffect(() => {
     if (visible) {
-      loadDevices();
       checkPermissions();
     }
-  }, [visible, loadDevices, checkPermissions]);
+  }, [visible, checkPermissions]);
 
   const handleSecretTap = () => {
     const newCount = tapCount + 1;
@@ -140,12 +153,11 @@ const MediaDiagnostics = () => {
     setTimeout(() => setTapCount(0), 2000);
   };
 
-  // Get bridge config from GraphQL subscription data (correct source)
+  // Get bridge config from GraphQL subscription data
   const meetingFields = meetingData?.meeting?.[0] || {};
   const {
     audioBridge = 'unknown',
     cameraBridge = 'unknown',
-    screenShareBridge = 'unknown',
   } = meetingFields;
 
   if (!visible) {
@@ -164,61 +176,44 @@ const MediaDiagnostics = () => {
         <Text style={styles.title}>Media Diagnostics</Text>
 
         <Section title="Bridge Configuration">
-          <Row label="Audio Bridge" value={audioBridge} />
-          <Row label="Camera Bridge" value={cameraBridge} />
-          <Row label="Screenshare Bridge" value={screenShareBridge} />
+          <Row label="Audio" value={audioBridge} />
+          <Row label="Camera" value={cameraBridge} />
         </Section>
 
         <Section title="Permissions">
           <Row label="Camera" value={permissions.camera} ok={permissions.camera === 'granted'} />
           {permissions.camera !== 'granted' && (
             <TouchableOpacity style={styles.permButton} onPress={requestCameraPermission}>
-              <Text style={styles.permButtonText}>Request Camera Permission</Text>
+              <Text style={styles.permButtonText}>Request Camera</Text>
             </TouchableOpacity>
           )}
           <Row label="Microphone" value={permissions.microphone} ok={permissions.microphone === 'granted'} />
         </Section>
 
-        <Section title="Media Devices">
-          <Row label="Audio Inputs" value={String(devices.audioInputs.length)} />
-          <Row label="Video Inputs" value={String(devices.videoInputs.length)} />
-          <Row label="Audio Outputs" value={String(devices.audioOutputs.length)} />
-          <TouchableOpacity style={styles.testButton} onPress={testGetUserMedia}>
-            <Text style={styles.testButtonText}>Test getUserMedia</Text>
-          </TouchableOpacity>
-          {getUserMediaResult !== 'not tested' && (
-            <Text style={[styles.resultText, getUserMediaResult.startsWith('OK') ? styles.ok : styles.error]}>
-              {getUserMediaResult}
-            </Text>
-          )}
+        <Section title="Media State">
+          <Row label="Audio Connected" value={String(audio?.isConnected ?? 'N/A')} />
+          <Row label="Audio Connecting" value={String(audio?.isConnecting ?? 'N/A')} />
+          <Row label="Video Streams" value={String(video?.videoStreams?.collection ? Object.keys(video.videoStreams.collection).length : 0)} />
         </Section>
 
         <Section title="SFU Connection (bbb-webrtc-sfu)">
+          <Text style={styles.sectionTitle}>Host: {client?.meetingData?.host || 'N/A'}</Text>
           <TouchableOpacity style={styles.testButton} onPress={testSfuConnection}>
-            <Text style={styles.testButtonText}>Test SFU WebSocket</Text>
+            <Text style={styles.testButtonText}>Test SFU (no auth)</Text>
           </TouchableOpacity>
           {sfuTestResult !== 'not tested' && (
             <Text style={[styles.resultText, sfuTestResult.startsWith('OK') ? styles.ok : styles.error]}>
               {sfuTestResult}
             </Text>
           )}
-        </Section>
-
-        <Section title="Audio State">
-          <Row label="Is Connected" value={String(audio?.isConnected ?? 'N/A')} />
-          <Row label="Is Connecting" value={String(audio?.isConnecting ?? 'N/A')} />
-          <Row label="Is Muted" value={String(audio?.isMuted ?? 'N/A')} />
-          <Row label="Listen Only" value={String(audio?.isListenOnly ?? 'N/A')} />
-        </Section>
-
-        <Section title="Video State">
-          <Row label="Current Camera" value={video?.currentCamId || 'none'} />
-          <Row label="Streams Count" value={String(video?.videoStreams?.collection ? Object.keys(video.videoStreams.collection).length : 0)} />
-        </Section>
-
-        <Section title="Connection">
-          <Row label="Host" value={client?.meetingData?.host || 'N/A'} />
-          <Row label="Session Token" value={client?.sessionToken ? `${client.sessionToken.substring(0, 8)}...` : 'N/A'} />
+          <TouchableOpacity style={[styles.testButton, { marginTop: 8 }]} onPress={testSfuWithToken}>
+            <Text style={styles.testButtonText}>Test SFU (with token)</Text>
+          </TouchableOpacity>
+          {sfuTokenResult !== 'not tested' && (
+            <Text style={[styles.resultText, sfuTokenResult.startsWith('OK') ? styles.ok : styles.error]}>
+              {sfuTokenResult}
+            </Text>
+          )}
         </Section>
 
         <TouchableOpacity style={styles.closeButton} onPress={() => setVisible(false)}>
