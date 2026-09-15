@@ -16,6 +16,7 @@ const MediaDiagnostics = () => {
   const [devices, setDevices] = useState({ audioInputs: [], videoInputs: [], audioOutputs: [] });
   const [permissions, setPermissions] = useState({ camera: 'unknown', microphone: 'unknown' });
   const [getUserMediaResult, setUserMediaResult] = useState('not tested');
+  const [sfuTestResult, setSfuTestResult] = useState('not tested');
 
   // Get meeting data from GraphQL subscription (correct source for bridge config)
   const { data: meetingData } = useMeeting();
@@ -90,6 +91,38 @@ const MediaDiagnostics = () => {
     }
   }, []);
 
+  // Test WebSocket connection to bbb-webrtc-sfu
+  const testSfuConnection = useCallback(async () => {
+    setSfuTestResult('testing...');
+    try {
+      const host = client?.meetingData?.host;
+      if (!host) {
+        setSfuTestResult('FAIL: no host');
+        return;
+      }
+      const wsUrl = `wss://${host}/bbb-webrtc-sfu?sessionToken=test`;
+      const ws = new WebSocket(wsUrl);
+      const result = await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          ws.close();
+          resolve('TIMEOUT');
+        }, 5000);
+        ws.onopen = () => {
+          clearTimeout(timeout);
+          ws.close();
+          resolve('OK: WebSocket opened');
+        };
+        ws.onerror = (e) => {
+          clearTimeout(timeout);
+          resolve(`FAIL: ${e.message || 'connection error'}`);
+        };
+      });
+      setSfuTestResult(result);
+    } catch (e) {
+      setSfuTestResult(`FAIL: ${e.message || 'unknown error'}`);
+    }
+  }, [client]);
+
   useEffect(() => {
     if (visible) {
       loadDevices();
@@ -156,6 +189,17 @@ const MediaDiagnostics = () => {
           {getUserMediaResult !== 'not tested' && (
             <Text style={[styles.resultText, getUserMediaResult.startsWith('OK') ? styles.ok : styles.error]}>
               {getUserMediaResult}
+            </Text>
+          )}
+        </Section>
+
+        <Section title="SFU Connection (bbb-webrtc-sfu)">
+          <TouchableOpacity style={styles.testButton} onPress={testSfuConnection}>
+            <Text style={styles.testButtonText}>Test SFU WebSocket</Text>
+          </TouchableOpacity>
+          {sfuTestResult !== 'not tested' && (
+            <Text style={[styles.resultText, sfuTestResult.startsWith('OK') ? styles.ok : styles.error]}>
+              {sfuTestResult}
             </Text>
           )}
         </Section>
