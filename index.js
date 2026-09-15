@@ -1,6 +1,5 @@
 import 'react-native-gesture-handler';
 import { registerRootComponent } from 'expo';
-import Settings from './settings.json';
 import { registerGlobals } from '@livekit/react-native';
 registerGlobals();
 
@@ -9,21 +8,23 @@ import App from './App';
 // export for sdk purposes (host apps import this)
 export default App;
 
-// In standalone mode (dev: true), use the standalone wrapper which provides
-// server URL input and Greenlight room detection. In embedded mode (dev: false),
-// use the core App directly.
-// The MainActivity expects a component registered as "main", so we must always
-// register regardless of dev mode.
+// Always use the standalone wrapper as the root component.
+// The standalone wrapper provides:
+//   - Server URL input screen (when no joinURL prop is provided)
+//   - Greenlight room URL detection (auto-resolves /rooms/ links)
+//   - WebView-based join flow
+//   - Proper leave handling (returns to input screen)
+//
+// The standalone wrapper renders the core App internally when a joinURL
+// is available (either via prop or after user input). Host apps that embed
+// the SDK can still pass joinURL directly to the exported App component.
 const RootComponent = (() => {
-  if (Settings.dev) {
-    try {
-      return require('./standalone/App').default;
-    } catch {
-      // Standalone wrapper not available, fall back to core App
-      return App;
-    }
+  try {
+    return require('./standalone/App').default;
+  } catch {
+    // Standalone wrapper not available (e.g., SDK consumed as library)
+    return App;
   }
-  return App;
 })();
 
 registerRootComponent(RootComponent);
