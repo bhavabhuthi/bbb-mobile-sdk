@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import useMeeting from '../../graphql/hooks/useMeeting';
 import AudioManager from '../../services/webrtc/audio-manager';
 import VideoManager from '../../services/webrtc/video-manager';
+import useCurrentUser from '../../graphql/hooks/useCurrentUser';
 
 /**
  * Media diagnostics overlay for debugging audio/video issues.
@@ -21,19 +22,21 @@ const MediaDiagnostics = () => {
   const [audioManagerState, setAudioManagerState] = useState('unknown');
 
   // Get meeting data from GraphQL subscription (correct source for bridge config)
-  const { data: meetingData } = useMeeting();
+  const { data: meetingData, loading: meetingLoading } = useMeeting();
+  // Get current user data (for userId — must match what BBBLiveKitRoom uses)
+  const { data: currentUserData } = useCurrentUser();
 
   // Redux state
   const audio = useSelector((state) => state.audio);
   const video = useSelector((state) => state.video);
   const client = useSelector((state) => state.client);
-  const meeting = useSelector((state) => state.meeting);
 
   // Media manager initialization preconditions
-  const userId = client?.meetingData?.internalUserID;
+  // IMPORTANT: these MUST match the exact paths used in BBLiveKitRoom
+  const userId = currentUserData?.user_current[0]?.userId;
   const isClientConnected = client?.sessionState?.connected;
   const isClientLoggedIn = client?.sessionState?.loggedIn;
-  const meetingLoading = meeting?.loading;
+  const mainRoomBlockedByBreakout = client?.sessionState?.mainRoomBlockedByBreakout;
 
   const checkPermissions = useCallback(async () => {
     if (Platform.OS === 'android') {
@@ -237,6 +240,7 @@ const MediaDiagnostics = () => {
           <Row label="meetingLoading" value={String(meetingLoading ?? 'N/A')} ok={!meetingLoading} />
           <Row label="isClientConnected" value={String(isClientConnected ?? 'N/A')} ok={isClientConnected === true} />
           <Row label="isClientLoggedIn" value={String(isClientLoggedIn ?? 'N/A')} ok={isClientLoggedIn === true} />
+          <Row label="mainRoomBlockedByBreakout" value={String(mainRoomBlockedByBreakout ?? 'N/A')} ok={!mainRoomBlockedByBreakout} />
           <Row label="audioBridge" value={audioBridge} ok={audioBridge !== 'unknown' && !!audioBridge} />
           <Row label="cameraBridge" value={cameraBridge} ok={cameraBridge !== 'unknown' && !!cameraBridge} />
         </Section>
