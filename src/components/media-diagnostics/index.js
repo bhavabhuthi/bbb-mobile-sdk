@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform, PermissionsAndroid } from 'react-native';
 import { useSelector } from 'react-redux';
-import { getMediaDevices } from '@livekit/react-native-webrtc';
+import { getMediaDevices, mediaDevices } from '@livekit/react-native-webrtc';
 import useMeeting from '../../graphql/hooks/useMeeting';
 
 /**
@@ -15,6 +15,7 @@ const MediaDiagnostics = () => {
   const [tapCount, setTapCount] = useState(0);
   const [devices, setDevices] = useState({ audioInputs: [], videoInputs: [], audioOutputs: [] });
   const [permissions, setPermissions] = useState({ camera: 'unknown', microphone: 'unknown' });
+  const [getUserMediaResult, setUserMediaResult] = useState('not tested');
 
   // Get meeting data from GraphQL subscription (correct source for bridge config)
   const { data: meetingData } = useMeeting();
@@ -26,11 +27,11 @@ const MediaDiagnostics = () => {
 
   const loadDevices = useCallback(async () => {
     try {
-      const mediaDevices = await getMediaDevices();
+      const mediaDevs = await getMediaDevices();
       setDevices({
-        audioInputs: mediaDevices.filter((d) => d.kind === 'audioinput'),
-        videoInputs: mediaDevices.filter((d) => d.kind === 'videoinput'),
-        audioOutputs: mediaDevices.filter((d) => d.kind === 'audiooutput'),
+        audioInputs: mediaDevs.filter((d) => d.kind === 'audioinput'),
+        videoInputs: mediaDevs.filter((d) => d.kind === 'videoinput'),
+        audioOutputs: mediaDevs.filter((d) => d.kind === 'audiooutput'),
       });
     } catch (e) {
       // Media devices not available
@@ -49,7 +50,6 @@ const MediaDiagnostics = () => {
     }
   }, []);
 
-  // Defined outside useEffect so it can be used in JSX
   const requestCameraPermission = useCallback(async () => {
     if (Platform.OS === 'android') {
       const result = await PermissionsAndroid.request(
@@ -65,11 +65,30 @@ const MediaDiagnostics = () => {
       const granted = result === PermissionsAndroid.RESULTS.GRANTED;
       setPermissions((prev) => ({ ...prev, camera: granted ? 'granted' : 'denied' }));
       if (granted) {
-        // Re-check media devices after permission granted
         loadDevices();
       }
     }
   }, [loadDevices]);
+
+  // Test if getUserMedia actually works (the real test for media functionality)
+  const testGetUserMedia = useCallback(async () => {
+    setUserMediaResult('testing...');
+    try {
+      const stream = await mediaDevices.getUserMedia({
+        audio: true,
+        video: { facingMode: 'user' },
+      });
+      if (stream && stream.getTracks().length > 0) {
+        const tracks = stream.getTracks().map((t) => `${t.kind}:${t.id}`).join(', ');
+        stream.getTracks().forEach((t) => t.stop());
+        setUserMediaResult(`OK: ${tracks}`);
+      } else {
+        setUserMediaResult('FAIL: empty stream');
+      }
+    } catch (e) {
+      setUserMediaResult(`FAIL: ${e.message || e.code || 'unknown error'}`);
+    }
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -85,7 +104,6 @@ const MediaDiagnostics = () => {
       setVisible(!visible);
       setTapCount(0);
     }
-    // Reset tap count after 2 seconds of inactivity
     setTimeout(() => setTapCount(0), 2000);
   };
 
@@ -132,6 +150,14 @@ const MediaDiagnostics = () => {
           <Row label="Audio Inputs" value={String(devices.audioInputs.length)} />
           <Row label="Video Inputs" value={String(devices.videoInputs.length)} />
           <Row label="Audio Outputs" value={String(devices.audioOutputs.length)} />
+          <TouchableOpacity style={styles.testButton} onPress={testGetUserMedia}>
+            <Text style={styles.testButtonText}>Test getUserMedia</Text>
+          </TouchableOpacity>
+          {getUserMediaResult !== 'not tested' && (
+            <Text style={[styles.resultText, getUserMediaResult.startsWith('OK') ? styles.ok : styles.error]}>
+              {getUserMediaResult}
+            </Text>
+          )}
         </Section>
 
         <Section title="Audio State">
@@ -260,6 +286,25 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  testButton: {
+    backgroundColor: '#0066ff',
+    padding: 8,
+    borderRadius: 4,
+    marginVertical: 6,
+    alignItems: 'center',
+  },
+  testButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  resultText: {
+    fontSize: 11,
+    fontFamily: 'monospace',
+    marginTop: 4,
+    padding: 4,
+    backgroundColor: '#222',
   },
 });
 
