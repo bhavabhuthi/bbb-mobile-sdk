@@ -23,6 +23,13 @@ const MediaDiagnostics = () => {
   const audio = useSelector((state) => state.audio);
   const video = useSelector((state) => state.video);
   const client = useSelector((state) => state.client);
+  const meeting = useSelector((state) => state.meeting);
+
+  // Media manager initialization preconditions
+  const userId = client?.meetingData?.internalUserID;
+  const isClientConnected = client?.connectionStatus?.isConnected;
+  const isClientLoggedIn = client?.sessionState?.loggedIn;
+  const meetingLoading = meeting?.loading;
 
   const checkPermissions = useCallback(async () => {
     if (Platform.OS === 'android') {
@@ -188,6 +195,17 @@ const MediaDiagnostics = () => {
             </TouchableOpacity>
           )}
           <Row label="Microphone" value={permissions.microphone} ok={permissions.microphone === 'granted'} />
+        </Section>
+
+        <Section title="Media Initialization Preconditions">
+          <Row label="sessionToken" value={client?.meetingData?.sessionToken ? 'SET' : 'MISSING'} ok={!!client?.meetingData?.sessionToken} />
+          <Row label="host" value={client?.meetingData?.host || 'MISSING'} ok={!!client?.meetingData?.host} />
+          <Row label="userId" value={userId || 'MISSING'} ok={!!userId} />
+          <Row label="meetingLoading" value={String(meetingLoading ?? 'N/A')} ok={!meetingLoading} />
+          <Row label="isClientConnected" value={String(isClientConnected ?? 'N/A')} ok={isClientConnected === true} />
+          <Row label="isClientLoggedIn" value={String(isClientLoggedIn ?? 'N/A')} ok={isClientLoggedIn === true} />
+          <Row label="audioBridge" value={audioBridge} ok={audioBridge !== 'unknown' && !!audioBridge} />
+          <Row label="cameraBridge" value={cameraBridge} ok={cameraBridge !== 'unknown' && !!cameraBridge} />
         </Section>
 
         <Section title="Media State">
