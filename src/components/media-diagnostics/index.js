@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform, PermissionsAndroid } from 'react-native';
 import { useSelector } from 'react-redux';
 import useMeeting from '../../graphql/hooks/useMeeting';
+import AudioManager from '../../services/webrtc/audio-manager';
+import VideoManager from '../../services/webrtc/video-manager';
 
 /**
  * Media diagnostics overlay for debugging audio/video issues.
@@ -15,6 +17,8 @@ const MediaDiagnostics = () => {
   const [permissions, setPermissions] = useState({ camera: 'unknown', microphone: 'unknown' });
   const [sfuTestResult, setSfuTestResult] = useState('not tested');
   const [sfuTokenResult, setSfuTokenResult] = useState('not tested');
+  const [audioJoinResult, setAudioJoinResult] = useState('not tested');
+  const [audioManagerState, setAudioManagerState] = useState('unknown');
 
   // Get meeting data from GraphQL subscription (correct source for bridge config)
   const { data: meetingData } = useMeeting();
@@ -144,9 +148,38 @@ const MediaDiagnostics = () => {
     }
   }, [client]);
 
+  // Test actual AudioManager join (full signaling flow)
+  const testAudioJoin = useCallback(async () => {
+    setAudioJoinResult('testing...');
+    try {
+      // Check if audio manager is initialized
+      if (!AudioManager.initialized) {
+        setAudioJoinResult('FAIL: AudioManager not initialized');
+        return;
+      }
+      // Try to join microphone (muted)
+      await AudioManager.joinMicrophone({
+        muted: true,
+        isListenOnly: false,
+        audioBridge: 'bbb-webrtc-sfu',
+      });
+      setAudioJoinResult('OK: AudioManager.joinMicrophone succeeded');
+    } catch (e) {
+      setAudioJoinResult(`FAIL: ${e.message || e.code || 'unknown error'}`);
+    }
+  }, []);
+
   useEffect(() => {
     if (visible) {
       checkPermissions();
+      // Check audio manager state
+      try {
+        setAudioManagerState(
+          `initialized=${AudioManager.initialized}, bridge=${AudioManager.bridge ? 'yes' : 'no'}, sessionNumber=${AudioManager.audioSessionNumber}`
+        );
+      } catch (e) {
+        setAudioManagerState('error reading state');
+      }
     }
   }, [visible, checkPermissions]);
 
@@ -231,6 +264,18 @@ const MediaDiagnostics = () => {
           {sfuTokenResult !== 'not tested' && (
             <Text style={[styles.resultText, sfuTokenResult.startsWith('OK') ? styles.ok : styles.error]}>
               {sfuTokenResult}
+            </Text>
+          )}
+        </Section>
+
+        <Section title="AudioManager State">
+          <Text style={styles.resultText}>{audioManagerState}</Text>
+          <TouchableOpacity style={styles.testButton} onPress={testAudioJoin}>
+            <Text style={styles.testButtonText}>Test Audio Join (muted)</Text>
+          </TouchableOpacity>
+          {audioJoinResult !== 'not tested' && (
+            <Text style={[styles.resultText, audioJoinResult.startsWith('OK') ? styles.ok : styles.error]}>
+              {audioJoinResult}
             </Text>
           )}
         </Section>
