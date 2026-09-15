@@ -10,6 +10,7 @@ import TalkingIndicator from '../../components/talking-indicator';
 import TimerIndicator from '../../components/timer/timerIndicator';
 import useAppState from '../../hooks/use-app-state';
 import PiPView from './pip-view';
+import MediaDiagnostics from '../../components/media-diagnostics';
 import Styled from './styles';
 import Settings from '../../../settings.json';
 
@@ -70,7 +71,12 @@ const MainConferenceScreen = () => {
     );
   }
 
-  return isBackgrounded && isAndroid && isPiPEnabled ? renderPiP() : renderGridLayout();
+  return (
+    <>
+      {isBackgrounded && isAndroid && isPiPEnabled ? renderPiP() : renderGridLayout()}
+      <MediaDiagnostics />
+    </>
+  );
 };
 
 export default MainConferenceScreen;

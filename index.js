@@ -9,13 +9,21 @@ import App from './App';
 // export for sdk purposes (host apps import this)
 export default App;
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
-// Only register root component if you are running the sdk alone.
-if (Settings.dev) {
-  // In standalone/dev mode, use the standalone wrapper which provides
-  // server URL input and Greenlight room detection
-  const StandaloneApp = require('./standalone/App').default;
-  registerRootComponent(StandaloneApp);
-}
+// In standalone mode (dev: true), use the standalone wrapper which provides
+// server URL input and Greenlight room detection. In embedded mode (dev: false),
+// use the core App directly.
+// The MainActivity expects a component registered as "main", so we must always
+// register regardless of dev mode.
+const RootComponent = (() => {
+  if (Settings.dev) {
+    try {
+      return require('./standalone/App').default;
+    } catch {
+      // Standalone wrapper not available, fall back to core App
+      return App;
+    }
+  }
+  return App;
+})();
+
+registerRootComponent(RootComponent);
