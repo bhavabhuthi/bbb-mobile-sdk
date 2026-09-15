@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform, PermissionsAndroid } from 'react-native';
 import { useSelector } from 'react-redux';
 import { getMediaDevices } from '@livekit/react-native-webrtc';
@@ -24,59 +24,59 @@ const MediaDiagnostics = () => {
   const video = useSelector((state) => state.video);
   const client = useSelector((state) => state.client);
 
-  useEffect(() => {
-    const loadDevices = async () => {
-      try {
-        const mediaDevices = await getMediaDevices();
-        setDevices({
-          audioInputs: mediaDevices.filter((d) => d.kind === 'audioinput'),
-          videoInputs: mediaDevices.filter((d) => d.kind === 'videoinput'),
-          audioOutputs: mediaDevices.filter((d) => d.kind === 'audiooutput'),
-        });
-      } catch (e) {
-        // Media devices not available
-      }
-    };
+  const loadDevices = useCallback(async () => {
+    try {
+      const mediaDevices = await getMediaDevices();
+      setDevices({
+        audioInputs: mediaDevices.filter((d) => d.kind === 'audioinput'),
+        videoInputs: mediaDevices.filter((d) => d.kind === 'videoinput'),
+        audioOutputs: mediaDevices.filter((d) => d.kind === 'audiooutput'),
+      });
+    } catch (e) {
+      // Media devices not available
+    }
+  }, []);
 
-    const checkPermissions = async () => {
-      if (Platform.OS === 'android') {
-        const camera = await PermissionsAndroid.check(
-          PermissionsAndroid.PERMISSIONS.CAMERA
-        );
-        const mic = await PermissionsAndroid.check(
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
-        );
-        setPermissions({ camera: camera ? 'granted' : 'denied', microphone: mic ? 'granted' : 'denied' });
-      }
-    };
+  const checkPermissions = useCallback(async () => {
+    if (Platform.OS === 'android') {
+      const camera = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.CAMERA
+      );
+      const mic = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+      );
+      setPermissions({ camera: camera ? 'granted' : 'denied', microphone: mic ? 'granted' : 'denied' });
+    }
+  }, []);
 
-    const requestCameraPermission = async () => {
-      if (Platform.OS === 'android') {
-        const result = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.CAMERA,
-          {
-            title: 'Camera Permission',
-            message: 'This app needs camera access for video calls.',
-            buttonPositive: 'OK',
-            buttonNegative: 'Cancel',
-            buttonNeutral: 'Ask Later',
-          }
-        );
-        if (result === PermissionsAndroid.RESULTS.GRANTED) {
-          setPermissions((prev) => ({ ...prev, camera: 'granted' }));
-          // Re-check media devices after permission granted
-          loadDevices();
-        } else {
-          setPermissions((prev) => ({ ...prev, camera: 'denied' }));
+  // Defined outside useEffect so it can be used in JSX
+  const requestCameraPermission = useCallback(async () => {
+    if (Platform.OS === 'android') {
+      const result = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+        {
+          title: 'Camera Permission',
+          message: 'This app needs camera access for video calls.',
+          buttonPositive: 'OK',
+          buttonNegative: 'Cancel',
+          buttonNeutral: 'Ask Later',
         }
+      );
+      const granted = result === PermissionsAndroid.RESULTS.GRANTED;
+      setPermissions((prev) => ({ ...prev, camera: granted ? 'granted' : 'denied' }));
+      if (granted) {
+        // Re-check media devices after permission granted
+        loadDevices();
       }
-    };
+    }
+  }, [loadDevices]);
 
+  useEffect(() => {
     if (visible) {
       loadDevices();
       checkPermissions();
     }
-  }, [visible]);
+  }, [visible, loadDevices, checkPermissions]);
 
   const handleSecretTap = () => {
     const newCount = tapCount + 1;
