@@ -99,7 +99,7 @@ const MediaDiagnostics = () => {
     setSfuTokenResult('testing...');
     try {
       const host = client?.meetingData?.host;
-      const token = client?.sessionToken;
+      const token = client?.meetingData?.sessionToken;
       if (!host || !token) {
         setSfuTokenResult('FAIL: missing host or token');
         return;
@@ -197,7 +197,8 @@ const MediaDiagnostics = () => {
         </Section>
 
         <Section title="SFU Connection (bbb-webrtc-sfu)">
-          <Text style={styles.sectionTitle}>Host: {client?.meetingData?.host || 'N/A'}</Text>
+          <Row label="Host" value={client?.meetingData?.host || 'N/A'} />
+          <Row label="Token" value={client?.meetingData?.sessionToken ? `${client.meetingData.sessionToken.substring(0, 8)}...` : 'MISSING'} />
           <TouchableOpacity style={styles.testButton} onPress={testSfuConnection}>
             <Text style={styles.testButtonText}>Test SFU (no auth)</Text>
           </TouchableOpacity>
