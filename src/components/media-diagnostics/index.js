@@ -237,6 +237,9 @@ const MediaDiagnostics = () => {
           <Row label="sessionToken" value={client?.meetingData?.sessionToken ? 'SET' : 'MISSING'} ok={!!client?.meetingData?.sessionToken} />
           <Row label="host" value={client?.meetingData?.host || 'MISSING'} ok={!!client?.meetingData?.host} />
           <Row label="userId" value={userId || 'MISSING'} ok={!!userId} />
+          <Text style={styles.resultText}>
+            user_current count={currentUserData?.user_current?.length ?? 0}
+          </Text>
           <Row label="meetingLoading" value={String(meetingLoading ?? 'N/A')} ok={!meetingLoading} />
           <Row label="isClientConnected" value={String(isClientConnected ?? 'N/A')} ok={isClientConnected === true} />
           <Row label="isClientLoggedIn" value={String(isClientLoggedIn ?? 'N/A')} ok={isClientLoggedIn === true} />
