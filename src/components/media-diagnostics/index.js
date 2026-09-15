@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform, PermissionsAndroid } from 'react-native';
 import { useSelector } from 'react-redux';
 import { getMediaDevices } from '@livekit/react-native-webrtc';
+import useMeeting from '../../graphql/hooks/useMeeting';
 
 /**
  * Media diagnostics overlay for debugging audio/video issues.
  * Shows bridge types, connection state, and device permissions.
  *
- * Enable by setting `showMediaDiagnostics: true` in settings.json,
- * or by tapping the hidden debug area (top-right corner, 5 taps).
+ * Enable by tapping the hidden debug area (top-right corner, 5 taps).
  */
 const MediaDiagnostics = () => {
   const [visible, setVisible] = useState(false);
@@ -16,10 +16,12 @@ const MediaDiagnostics = () => {
   const [devices, setDevices] = useState({ audioInputs: [], videoInputs: [], audioOutputs: [] });
   const [permissions, setPermissions] = useState({ camera: 'unknown', microphone: 'unknown' });
 
+  // Get meeting data from GraphQL subscription (correct source for bridge config)
+  const { data: meetingData } = useMeeting();
+
   // Redux state
   const audio = useSelector((state) => state.audio);
   const video = useSelector((state) => state.video);
-  const meeting = useSelector((state) => state.meeting);
   const client = useSelector((state) => state.client);
 
   useEffect(() => {
@@ -48,6 +50,28 @@ const MediaDiagnostics = () => {
       }
     };
 
+    const requestCameraPermission = async () => {
+      if (Platform.OS === 'android') {
+        const result = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+          {
+            title: 'Camera Permission',
+            message: 'This app needs camera access for video calls.',
+            buttonPositive: 'OK',
+            buttonNegative: 'Cancel',
+            buttonNeutral: 'Ask Later',
+          }
+        );
+        if (result === PermissionsAndroid.RESULTS.GRANTED) {
+          setPermissions((prev) => ({ ...prev, camera: 'granted' }));
+          // Re-check media devices after permission granted
+          loadDevices();
+        } else {
+          setPermissions((prev) => ({ ...prev, camera: 'denied' }));
+        }
+      }
+    };
+
     if (visible) {
       loadDevices();
       checkPermissions();
@@ -65,12 +89,13 @@ const MediaDiagnostics = () => {
     setTimeout(() => setTapCount(0), 2000);
   };
 
-  const meetingData = meeting?.meeting?.[0] || {};
+  // Get bridge config from GraphQL subscription data (correct source)
+  const meetingFields = meetingData?.meeting?.[0] || {};
   const {
     audioBridge = 'unknown',
     cameraBridge = 'unknown',
     screenShareBridge = 'unknown',
-  } = meetingData;
+  } = meetingFields;
 
   if (!visible) {
     return (
@@ -95,6 +120,11 @@ const MediaDiagnostics = () => {
 
         <Section title="Permissions">
           <Row label="Camera" value={permissions.camera} ok={permissions.camera === 'granted'} />
+          {permissions.camera !== 'granted' && (
+            <TouchableOpacity style={styles.permButton} onPress={requestCameraPermission}>
+              <Text style={styles.permButtonText}>Request Camera Permission</Text>
+            </TouchableOpacity>
+          )}
           <Row label="Microphone" value={permissions.microphone} ok={permissions.microphone === 'granted'} />
         </Section>
 
@@ -218,6 +248,18 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontFamily: 'monospace',
+  },
+  permButton: {
+    backgroundColor: '#ff6600',
+    padding: 8,
+    borderRadius: 4,
+    marginVertical: 6,
+    alignItems: 'center',
+  },
+  permButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });
 
