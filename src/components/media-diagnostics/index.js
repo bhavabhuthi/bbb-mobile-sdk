@@ -95,13 +95,24 @@ const MediaDiagnostics = () => {
     try {
       const host = client?.meetingData?.host;
       const token = client?.meetingData?.sessionToken;
+      const userId = currentUserData?.user_current?.[0]?.userId;
+      const userName = currentUserData?.user_current?.[0]?.name;
+      const meetingId = meetingData?.meeting?.[0]?.meetingId;
       if (!host || !token) {
         setHocuspocusResult('FAIL: missing host or token');
         return;
       }
-      // Try with documentName parameter (Hocuspocus expects this)
+      // Try with all auth params as query string (server may accept these)
       const padId = sharedNotesPadId || 'notes';
-      const wsUrl = `wss://${host}/hocuspocus/collaboration?sessionToken=${token}&documentName=${encodeURIComponent(padId)}`;
+      const params = new URLSearchParams({
+        sessionToken: token,
+        documentName: padId,
+      });
+      if (userId) params.set('userId', userId);
+      if (userName) params.set('userName', encodeURIComponent(userName));
+      if (meetingId) params.set('meetingId', meetingId);
+      const wsUrl = `wss://${host}/hocuspocus/collaboration?${params.toString()}`;
+      setHocuspocusResult(`trying ${wsUrl.slice(0, 80)}...`);
       const result = await new Promise((resolve) => {
         let ws;
         try { ws = new WebSocket(wsUrl); } catch (e) { resolve(`FAIL: ${e.message}`); return; }
@@ -114,7 +125,7 @@ const MediaDiagnostics = () => {
     } catch (e) {
       setHocuspocusResult(`FAIL: ${e.message || 'unknown'}`);
     }
-  }, [client, sharedNotesPadId]);
+  }, [client, sharedNotesPadId, currentUserData, meetingData]);
 
   useEffect(() => {
     if (visible) checkPermissions();
