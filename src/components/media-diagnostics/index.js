@@ -99,20 +99,22 @@ const MediaDiagnostics = () => {
         setHocuspocusResult('FAIL: missing host or token');
         return;
       }
-      const wsUrl = `wss://${host}/hocuspocus/collaboration?sessionToken=${token}`;
+      // Try with documentName parameter (Hocuspocus expects this)
+      const padId = sharedNotesPadId || 'notes';
+      const wsUrl = `wss://${host}/hocuspocus/collaboration?sessionToken=${token}&documentName=${encodeURIComponent(padId)}`;
       const result = await new Promise((resolve) => {
         let ws;
         try { ws = new WebSocket(wsUrl); } catch (e) { resolve(`FAIL: ${e.message}`); return; }
         const timeout = setTimeout(() => { try { ws.close(); } catch {} resolve('TIMEOUT (5s)'); }, 5000);
         ws.onopen = () => { clearTimeout(timeout); try { ws.close(); } catch {} resolve('OK: Hocuspocus connected'); };
         ws.onerror = () => { clearTimeout(timeout); resolve('FAIL: server rejected'); };
-        ws.onclose = (e) => { clearTimeout(timeout); resolve(`CLOSED: code=${e.code}`); };
+        ws.onclose = (e) => { clearTimeout(timeout); resolve(`CLOSED: code=${e.code} reason=${e.reason || ''}`); };
       });
       setHocuspocusResult(result);
     } catch (e) {
       setHocuspocusResult(`FAIL: ${e.message || 'unknown'}`);
     }
-  }, [client]);
+  }, [client, sharedNotesPadId]);
 
   useEffect(() => {
     if (visible) checkPermissions();
@@ -175,6 +177,9 @@ const MediaDiagnostics = () => {
           <Row label="extId" value={sharedNotesExtId || 'N/A'} ok={!!sharedNotesExtId} />
           <Text style={styles.errorText}>
             sharedNotes count={sharedNotesData?.sharedNotes?.length ?? 0}
+          </Text>
+          <Text style={styles.errorText}>
+            padId={sharedNotesPadId || 'notes'}
           </Text>
           <TouchableOpacity style={styles.testButton} onPress={testHocuspocus}>
             <Text style={styles.testButtonText}>Test Hocuspocus WS</Text>
