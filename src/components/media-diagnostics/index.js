@@ -24,13 +24,8 @@ const MediaDiagnostics = () => {
   const { error: meetingError } = useMeeting();
   const { data: currentUserData, error: userError } = useCurrentUser();
   const { data: userListData, error: userListError } = useUserList();
-  // Get meeting settings to find the correct notes externalId
-  const meetingSettings = useSelector((state) => state.client.meetingSettings);
-  const notesSettings = meetingSettings?.public?.notes;
-  const externalId = notesSettings?.id || 'bbb-notes';
   const { data: sharedNotesData, error: sNotesError } = useSubscription(
-    Queries.SHARED_NOTES_SUBSCRIPTION,
-    { variables: { externalId } }
+    Queries.SHARED_NOTES_SUBSCRIPTION
   );
   const sharedNotesPadId = sharedNotesData?.sharedNotes?.[0]?.padId;
   const sharedNotesExtId = sharedNotesData?.sharedNotes?.[0]?.sharedNotesExtId;
@@ -178,9 +173,6 @@ const MediaDiagnostics = () => {
         <Section title="Shared Notes">
           <Row label="padId" value={sharedNotesPadId || 'N/A'} ok={!!sharedNotesPadId} />
           <Row label="extId" value={sharedNotesExtId || 'N/A'} ok={!!sharedNotesExtId} />
-          <Text style={styles.errorText}>
-            filter externalId={externalId}
-          </Text>
           <Text style={styles.errorText}>
             sharedNotes count={sharedNotesData?.sharedNotes?.length ?? 0}
           </Text>

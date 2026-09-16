@@ -20,7 +20,6 @@ import Styled from './styles';
 // at. `editor-bundle.js` is our own build of it (see shared-notes-editor/).
 
 const CONFIG_PLACEHOLDER = '/*__BBB_NOTES_CONFIG__*/';
-const DEFAULT_NOTES_EXTERNAL_ID = 'notes';
 const DEFAULT_MAX_DOCUMENT_CHARS = 99999;
 const DEFAULT_MAX_LENGTH_FOR_CONTENT_UPDATE = 1500;
 const ETHERPAD_EDITOR = 'etherpad';
@@ -233,16 +232,12 @@ const UserNotesScreen = () => {
   const { t, i18n } = useTranslation();
   const dispatch = useDispatch();
 
-  const notesSettings = meetingSettings?.public?.notes;
   const sharedNotesSettings = meetingSettings?.public?.sharedNotes;
-  const externalId = notesSettings?.id || DEFAULT_NOTES_EXTERNAL_ID;
 
   const {
     data: sharedNotesData,
     error: sharedNotesError,
-  } = useSubscription(Queries.SHARED_NOTES_SUBSCRIPTION, {
-    variables: { externalId },
-  });
+  } = useSubscription(Queries.SHARED_NOTES_SUBSCRIPTION);
   const { data: currentUserData } = useCurrentUser();
   const { data: meetingData } = useMeeting();
 
