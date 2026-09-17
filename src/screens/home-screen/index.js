@@ -4,12 +4,12 @@ import {
 } from 'react-native';
 import useRoomHistory from '../../hooks/useRoomHistory';
 import RoomCard from '../../components/room-card';
+import { URL_TYPES, detectUrlType } from '../../utils/url-detection';
 
-const DEFAULT_ICONS = ['📅', '📚', '💼', '🎓', '🔧', '🎯', '💡', '🏠'];
-
-const HomeScreen = ({ onJoinRoom, onJoinWithUrl, onAddRoom, credentials, onLogin, onLogout }) => {
-  const { rooms, loading, deleteRoom, updateRoom } = useRoomHistory();
+const HomeScreen = ({ onJoinRoom, onAddRoom, credentials, onLogin, onLogout }) => {
+  const { rooms, loading, deleteRoom, updateRoom, saveRoom } = useRoomHistory();
   const [searchQuery, setSearchQuery] = useState('');
+  const [quickUrl, setQuickUrl] = useState('');
 
   const handleRoomPress = useCallback((room) => {
     onJoinRoom(room);
@@ -21,15 +21,8 @@ const HomeScreen = ({ onJoinRoom, onJoinWithUrl, onAddRoom, credentials, onLogin
       'What would you like to do?',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Rename',
-          onPress: () => handleRename(room),
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteRoom(room.id),
-        },
+        { text: 'Rename', onPress: () => handleRename(room) },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteRoom(room.id) },
       ]
     );
   }, [deleteRoom]);
@@ -40,19 +33,35 @@ const HomeScreen = ({ onJoinRoom, onJoinWithUrl, onAddRoom, credentials, onLogin
       'Enter a new name:',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Save',
-          onPress: (newName) => {
-            if (newName && newName.trim()) {
-              updateRoom(room.id, { name: newName.trim() });
-            }
-          },
-        },
+        { text: 'Save', onPress: (newName) => {
+          if (newName?.trim()) updateRoom(room.id, { name: newName.trim() });
+        }},
       ],
       'plain-text',
       room.name || ''
     );
   }, [updateRoom]);
+
+  const handleQuickJoin = useCallback(() => {
+    if (!quickUrl.trim()) return;
+    const { type, url: normalizedUrl } = detectUrlType(quickUrl.trim());
+    if (type === URL_TYPES.INVALID) {
+      Alert.alert('Invalid URL', 'Please enter a valid BBB or Greenlight URL');
+      return;
+    }
+    // Save to history then join
+    if (type === URL_TYPES.GREENLIGHT_ROOM) {
+      saveRoom({
+        name: normalizedUrl.match(/rooms\/([a-zA-Z0-9_-]+)/)?.[1] || 'Room',
+        greenlightUrl: normalizedUrl,
+        bbbHost: normalizedUrl.match(/https?:\/\/([^/]+)/)?.[1] || '',
+        roomId: normalizedUrl.match(/rooms\/([a-zA-Z0-9_-]+)/)?.[1] || '',
+        icon: '📅',
+      });
+    }
+    onJoinRoom({ greenlightUrl: normalizedUrl, bbbUrl: normalizedUrl });
+    setQuickUrl('');
+  }, [quickUrl, onJoinRoom, saveRoom]);
 
   const filteredRooms = searchQuery
     ? rooms.filter((r) =>
@@ -63,22 +72,66 @@ const HomeScreen = ({ onJoinRoom, onJoinWithUrl, onAddRoom, credentials, onLogin
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>BigBlueButton</Text>
-
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="🔍  Search your rooms..."
-          placeholderTextColor="#666666"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.title}>BigBlueButton</Text>
+        <TouchableOpacity
+          style={styles.authButton}
+          onPress={credentials ? onLogout : onLogin}
+        >
+          {credentials ? (
+            <Text style={styles.authText} numberOfLines={1}>
+              {credentials.username}
+            </Text>
+          ) : (
+            <Text style={styles.authText}>Login</Text>
+          )}
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Quick URL Entry */}
+        <View style={styles.urlSection}>
+          <Text style={styles.sectionTitle}>Join a Meeting</Text>
+          <View style={styles.urlRow}>
+            <TextInput
+              style={styles.urlInput}
+              placeholder="Paste BBB or Greenlight URL..."
+              placeholderTextColor="#666666"
+              value={quickUrl}
+              onChangeText={setQuickUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              returnKeyType="go"
+              onSubmitEditing={handleQuickJoin}
+            />
+            <TouchableOpacity
+              style={[styles.urlJoinButton, !quickUrl.trim() && styles.urlJoinDisabled]}
+              onPress={handleQuickJoin}
+              disabled={!quickUrl.trim()}
+            >
+              <Text style={styles.urlJoinText}>Join</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Saved Rooms */}
         {rooms.length > 0 && (
-          <>
-            <Text style={styles.sectionTitle}>Your Rooms</Text>
+          <View style={styles.roomsSection}>
+            <View style={styles.roomsSectionHeader}>
+              <Text style={styles.sectionTitle}>Your Rooms</Text>
+              <TouchableOpacity onPress={onAddRoom}>
+                <Text style={styles.addRoomText}>+ Add</Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="🔍  Search rooms..."
+              placeholderTextColor="#666666"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -95,55 +148,29 @@ const HomeScreen = ({ onJoinRoom, onJoinWithUrl, onAddRoom, credentials, onLogin
               ))}
               <TouchableOpacity style={styles.addCard} onPress={onAddRoom}>
                 <Text style={styles.addIcon}>➕</Text>
-                <Text style={styles.addText}>Add Room</Text>
+                <Text style={styles.addText}>Add</Text>
               </TouchableOpacity>
             </ScrollView>
-          </>
-        )}
-
-        {rooms.length === 0 && !loading && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>🏠</Text>
-            <Text style={styles.emptyTitle}>No rooms yet</Text>
-            <Text style={styles.emptyText}>
-              Add a Greenlight room or paste a BBB join URL to get started.
-              Rooms you join will appear here for quick access.
-            </Text>
           </View>
         )}
 
-        <View style={styles.authBar}>
-          {credentials ? (
-            <View style={styles.loggedInState}>
-              <Text style={styles.loggedInText} numberOfLines={1}>
-                👤 {credentials.username} @ {credentials.server?.replace(/^https?:\/\//, '')}
-              </Text>
-              <TouchableOpacity onPress={onLogout}>
-                <Text style={styles.logoutText}>Logout</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity style={styles.loginButton} onPress={onLogin}>
-              <Text style={styles.loginButtonText}>👤 Login (optional)</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <TouchableOpacity style={styles.urlButton} onPress={onJoinWithUrl}>
-          <Text style={styles.urlButtonText}>🔗  Join with URL</Text>
-          <Text style={styles.urlButtonSub}>Paste any BBB or Greenlight link</Text>
-        </TouchableOpacity>
-
-        {rooms.length > 0 && (
-          <TouchableOpacity style={styles.addRoomButton} onPress={onAddRoom}>
-            <Text style={styles.addRoomButtonText}>➕  Add Room Manually</Text>
+        {/* Add room button when no rooms */}
+        {rooms.length === 0 && !loading && (
+          <TouchableOpacity style={styles.addRoomCard} onPress={onAddRoom}>
+            <Text style={styles.addRoomIcon}>➕</Text>
+            <Text style={styles.addRoomTitle}>Add a Room</Text>
+            <Text style={styles.addRoomSub}>
+              Save a Greenlight room for quick access
+            </Text>
           </TouchableOpacity>
         )}
       </ScrollView>
 
-      <Text style={styles.footer}>
-        {rooms.length} room{rooms.length !== 1 ? 's' : ''} saved locally
-      </Text>
+      {credentials && (
+        <Text style={styles.footer}>
+          Logged in as {credentials.username} @ {credentials.server?.replace(/^https?:\/\//, '')}
+        </Text>
+      )}
     </View>
   );
 };
@@ -152,43 +179,102 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a2e',
-    padding: 20,
     paddingTop: 60,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 20,
   },
   title: {
     color: '#ffffff',
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: 'bold',
-    marginBottom: 20,
   },
-  searchContainer: {
-    marginBottom: 20,
+  authButton: {
+    backgroundColor: '#2a2a3e',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    maxWidth: 140,
   },
-  searchInput: {
+  authText: {
+    color: '#ffffff',
+    fontSize: 13,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  urlSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  urlRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  urlInput: {
+    flex: 1,
     backgroundColor: '#2a2a3e',
     color: '#ffffff',
     padding: 12,
     borderRadius: 10,
     fontSize: 14,
   },
-  content: {
-    flex: 1,
+  urlJoinButton: {
+    backgroundColor: '#0066cc',
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
   },
-  sectionTitle: {
+  urlJoinDisabled: {
+    opacity: 0.4,
+  },
+  urlJoinText: {
     color: '#ffffff',
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: 'bold',
+  },
+  roomsSection: {
+    marginBottom: 24,
+  },
+  roomsSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  addRoomText: {
+    color: '#0066cc',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  searchInput: {
+    backgroundColor: '#2a2a3e',
+    color: '#ffffff',
+    padding: 10,
+    borderRadius: 8,
+    fontSize: 13,
     marginBottom: 12,
   },
   roomsScroll: {
-    marginBottom: 24,
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
   },
   roomsContainer: {
     paddingRight: 20,
   },
   addCard: {
-    width: 160,
-    height: 140,
+    width: 100,
+    height: 120,
     backgroundColor: '#2a2a3e',
     borderRadius: 12,
     borderWidth: 2,
@@ -199,95 +285,38 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   addIcon: {
-    fontSize: 32,
-    marginBottom: 8,
+    fontSize: 24,
+    marginBottom: 4,
   },
   addText: {
     color: '#888888',
-    fontSize: 12,
+    fontSize: 11,
   },
-  emptyState: {
+  addRoomCard: {
+    backgroundColor: '#2a2a3e',
+    borderRadius: 16,
+    padding: 24,
     alignItems: 'center',
-    paddingVertical: 40,
+    marginTop: 20,
   },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 16,
+  addRoomIcon: {
+    fontSize: 40,
+    marginBottom: 12,
   },
-  emptyTitle: {
+  addRoomTitle: {
     color: '#ffffff',
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  emptyText: {
+  addRoomSub: {
     color: '#888888',
     fontSize: 13,
     textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: 20,
-  },
-  urlButton: {
-    backgroundColor: '#2a2a3e',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  urlButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  urlButtonSub: {
-    color: '#888888',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  addRoomButton: {
-    backgroundColor: '#3a3a4e',
-    padding: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  addRoomButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-  },
-  authBar: {
-    marginBottom: 16,
-  },
-  loggedInState: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#2a2a3e',
-    padding: 12,
-    borderRadius: 10,
-  },
-  loggedInText: {
-    color: '#ffffff',
-    fontSize: 13,
-    flex: 1,
-  },
-  logoutText: {
-    color: '#ff6666',
-    fontSize: 13,
-    marginLeft: 8,
-  },
-  loginButton: {
-    backgroundColor: '#2a2a3e',
-    padding: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  loginButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
   },
   footer: {
-    color: '#666666',
-    fontSize: 11,
+    color: '#555555',
+    fontSize: 10,
     textAlign: 'center',
     paddingVertical: 8,
   },

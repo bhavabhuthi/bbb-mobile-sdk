@@ -5,11 +5,10 @@ import { store } from '../src/store/redux/store';
 import HomeScreen from '../src/screens/home-screen';
 import AddRoomScreen from '../src/screens/add-room-screen';
 import LoginScreen from '../src/screens/login-screen';
-import ServerInputScreen from '../src/screens/server-input-screen';
+
 import GreenlightWebView from '../src/screens/greenlight-webview';
 import useRoomHistory from '../src/hooks/useRoomHistory';
 import useAuth from '../src/hooks/useAuth';
-import { parseGreenlightUrl } from '../src/utils/parseRoomUrl';
 import Colors from '../src/constants/colors';
 
 /**
@@ -51,7 +50,7 @@ const StandaloneApp = (props) => {
     injectStore();
   }, [injectStore]);
 
-  // Navigate to WebView for a room
+  // Navigate to WebView for a room (from quick URL or room card)
   const handleJoinRoom = useCallback((room) => {
     // Save/update room in history
     saveRoom(room);
@@ -64,33 +63,6 @@ const StandaloneApp = (props) => {
   const handleAddRoom = useCallback(() => {
     setCurrentScreen('addRoom');
   }, []);
-
-  // Navigate to Server Input (paste URL)
-  const handleJoinWithUrl = useCallback(() => {
-    setCurrentScreen('serverInput');
-  }, []);
-
-  // Handle server input submit
-  const handleServerSubmit = useCallback((result) => {
-    if (result.type === 'webview') {
-      setWebviewUrl(result.url);
-      setCurrentScreen('webview');
-    } else {
-      setServerUrl(result.url);
-      // Save to history as a direct BBB join
-      const parsed = parseGreenlightUrl(result.url);
-      if (parsed) {
-        saveRoom({
-          name: parsed.roomId,
-          greenlightUrl: parsed.greenlightUrl,
-          bbbHost: parsed.host,
-          roomId: parsed.roomId,
-          icon: '📅',
-        });
-      }
-      setCurrentScreen('conference');
-    }
-  }, [saveRoom]);
 
   // Handle WebView join URL interception
   const handleWebViewJoin = useCallback((bbbJoinUrl) => {
@@ -143,14 +115,6 @@ const StandaloneApp = (props) => {
           />
         );
 
-      case 'serverInput':
-        return (
-          <ServerInputScreen
-            onSubmit={handleServerSubmit}
-            onBack={() => setCurrentScreen('home')}
-          />
-        );
-
       case 'webview':
         return (
           <GreenlightWebView
@@ -174,7 +138,6 @@ const StandaloneApp = (props) => {
         return (
           <HomeScreen
             onJoinRoom={handleJoinRoom}
-            onJoinWithUrl={handleJoinWithUrl}
             onAddRoom={handleAddRoom}
             credentials={credentials}
             onLogin={() => setCurrentScreen('login')}
