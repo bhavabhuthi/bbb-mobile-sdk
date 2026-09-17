@@ -71,6 +71,7 @@ const NotesEditorWebView = ({ initialConfig, liveConfig, onOpenActionsBar }) => 
   const webViewRef = useRef(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [cookiesPrimed, setCookiesPrimed] = useState(!NEEDS_COOKIE_PRIMING);
+  const [connectionError, setConnectionError] = useState(false);
 
   // Frozen at mount: rebuilding it would reload the WebView and drop the Yjs
   // session, so mid-session changes go through injectJavaScript instead.
@@ -150,6 +151,10 @@ const NotesEditorWebView = ({ initialConfig, liveConfig, onOpenActionsBar }) => 
         logCode: 'shared_notes_editor_notification',
         extraInfo: { level: payload.level },
       }, payload.message);
+      // connectionClosed is a fatal error — show native overlay
+      if (payload.level === 'error' && /connectionClosed|authenticationFailed|securityViolation/i.test(payload.message || '')) {
+        setConnectionError(true);
+      }
     }
   }, [openExternally]);
 
@@ -166,9 +171,28 @@ const NotesEditorWebView = ({ initialConfig, liveConfig, onOpenActionsBar }) => 
 
   if (!html) return null;
 
+  const handleOpenInBrowser = useCallback(() => {
+    const { baseUrl } = initialConfig;
+    if (baseUrl) {
+      Linking.openURL(baseUrl.replace('/api', '')).catch(() => {});
+    }
+  }, [initialConfig]);
+
   return (
     <Styled.ContainerScreen>
       <Styled.ToggleActionsBarIconButton onPress={onOpenActionsBar} />
+      {connectionError && (
+        <Styled.ConnectionErrorOverlay>
+          <Styled.ConnectionErrorText>
+            {t('mobileSdk.sharedNotes.connectionClosed')}
+          </Styled.ConnectionErrorText>
+          <Styled.OpenInBrowserButton onPress={handleOpenInBrowser}>
+            <Styled.OpenInBrowserText>
+              Open in Browser
+            </Styled.OpenInBrowserText>
+          </Styled.OpenInBrowserButton>
+        </Styled.ConnectionErrorOverlay>
+      )}
       <WebView
         ref={webViewRef}
         source={source}
@@ -337,6 +361,15 @@ const UserNotesScreen = () => {
       <Styled.MessageText>{t('mobileSdk.sharedNotes.loadFailed')}</Styled.MessageText>,
     );
   }
+
+  // Shared notes require cookie-based auth that the native app doesn't have.
+  // Detect connection failure and offer to open in browser.
+  const handleOpenInBrowser = useCallback(() => {
+    const host = client?.meetingData?.host;
+    if (host) {
+      Linking.openURL(`https://${host}/html5client/?sessionToken=${sessionToken}`).catch(() => {});
+    }
+  }, [client, sessionToken]);
 
   if (!padId || !sessionToken || !apiHost) {
     return withChrome(<Styled.Spinner animating size="large" />);
