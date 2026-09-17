@@ -33,6 +33,7 @@
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
     <service android:name="app.notifee.core.ForegroundService" android:exported="false" android:foregroundServiceType="mediaPlayback|microphone" tools:replace="android:foregroundServiceType"/>
+    <service android:name=".AudioForegroundService" android:exported="false" android:foregroundServiceType="microphone"/>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="unspecified" android:supportsPictureInPicture="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>

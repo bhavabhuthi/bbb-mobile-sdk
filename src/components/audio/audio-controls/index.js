@@ -3,6 +3,7 @@ import {
   useCallback, useEffect, useRef, useState,
 } from 'react';
 import { useDispatch, useSelector, useStore } from 'react-redux';
+import useBackgroundAudio from '../../../hooks/useBackgroundAudio';
 import { Alert } from 'react-native';
 import { useMutation, useSubscription } from '@apollo/client';
 import { useTranslation } from 'react-i18next';
@@ -49,6 +50,10 @@ const AudioControls = () => {
   const meetingMicLocked = meetingData?.meeting[0]?.lockSettings?.disableMic;
   const micDisabled = meetingMicLocked && currentUserLocked;
   const isActive = isConnected || isConnecting;
+  const meetingName = meetingData?.meeting[0]?.name;
+
+  // Keep audio alive when app is backgrounded
+  useBackgroundAudio(isConnected, meetingName);
   const {
     data: currentUserVoiceData,
     loading: currentUserVoiceLoading,
