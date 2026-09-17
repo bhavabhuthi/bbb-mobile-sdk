@@ -1,20 +1,16 @@
 import { useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-/**
- * WebView-based login screen for Greenlight.
- * User logs in through Greenlight's native login page.
- * After successful login, we detect it and proceed.
- */
 const LoginScreen = ({ onLoggedIn, onBack }) => {
   const webViewRef = useRef(null);
   const [serverUrl, setServerUrl] = useState('');
   const [detectedUser, setDetectedUser] = useState('');
-  const [pageState, setPageState] = useState('enter_url'); // enter_url | logging_in | logged_in
+  const [pageState, setPageState] = useState('enter_url');
 
   const handleUrlSubmit = useCallback((url) => {
     const normalized = url.trim().replace(/\/+$/, '');
+    if (!normalized) return;
     setServerUrl(normalized);
     setPageState('logging_in');
   }, []);
@@ -22,7 +18,6 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
   const handleNavigationStateChange = useCallback((navState) => {
     const { url } = navState;
 
-    // Capture server URL
     if (url && !serverUrl) {
       try {
         const parsed = new URL(url);
@@ -32,18 +27,15 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
       }
     }
 
-    // Detect successful login: redirected away from login/signin pages
     if (serverUrl && !url.includes('/login') && !url.includes('/signin')) {
       setPageState('logged_in');
 
-      // Try to extract user info from the page
       const extractScript = `
         try {
-          // Greenlight stores user info in various places — try to find it
           const nameEl = document.querySelector('[data-testid="user-name"]')
             || document.querySelector('.user-name')
             || document.querySelector('header .name');
-          const name = nameEl?.textContent?.textContent || '';
+          const name = nameEl?.textContent?.trim() || '';
 
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'user_info',
@@ -68,17 +60,23 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
   }, []);
 
   const handleContinue = useCallback(() => {
-    onLoggedIn({
-      server: serverUrl,
-      username: detectedUser || 'User',
-    });
+    onLoggedIn({ server: serverUrl, username: detectedUser || 'User' });
     onBack();
   }, [serverUrl, detectedUser, onLoggedIn, onBack]);
+
+  const handleBack = useCallback(() => {
+    if (pageState === 'logging_in' || pageState === 'logged_in') {
+      setPageState('enter_url');
+      setDetectedUser('');
+    } else {
+      onBack();
+    }
+  }, [pageState, onBack]);
 
   const renderContent = () => {
     if (pageState === 'enter_url') {
       return (
-        <View style={styles.urlEntryContainer}>
+        <View style={styles.body}>
           <Text style={styles.label}>Greenlight Server URL</Text>
           <Text style={styles.subtitle}>
             Enter your organization's Greenlight URL to sign in
@@ -89,7 +87,7 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
     }
 
     return (
-      <View style={styles.webviewContainer}>
+      <View style={styles.webviewWrap}>
         <WebView
           ref={webViewRef}
           source={{ uri: `${serverUrl}/login` }}
@@ -99,25 +97,25 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
           domStorageEnabled
           sharedCookiesEnabled
           thirdPartyCookiesEnabled
-          style={styles.webview}
+          style={{ flex: 1 }}
         />
 
         {pageState === 'logged_in' && (
-          <View style={styles.successOverlay}>
-            <Text style={styles.successTitle}>✓ Logged In</Text>
+          <View style={styles.overlay}>
+            <Text style={styles.overlayTitle}>✓ Logged In</Text>
             {detectedUser ? (
-              <Text style={styles.successUser}>Welcome, {detectedUser}</Text>
+              <Text style={styles.overlayUser}>Welcome, {detectedUser}</Text>
             ) : null}
-            <View style={styles.continueButton} onTouchEnd={handleContinue}>
+            <View style={styles.continueBtn} onTouchEnd={handleContinue}>
               <Text style={styles.continueText}>Continue →</Text>
             </View>
           </View>
         )}
 
         {pageState === 'logging_in' && (
-          <View style={styles.loadingOverlay}>
+          <View style={styles.overlayCenter}>
             <ActivityIndicator size="large" color="#ffffff" />
-            <Text style={styles.loadingText}>Waiting for login...</Text>
+            <Text style={styles.overlayText}>Waiting for login...</Text>
           </View>
         )}
       </View>
@@ -125,11 +123,13 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.backButton} onPress={onBack}>← Back</Text>
-        <Text style={styles.title}>Login</Text>
-        <View style={styles.placeholder} />
+        <View style={styles.headerSide} onTouchEnd={handleBack}>
+          <Text style={styles.headerBack}>← Back</Text>
+        </View>
+        <Text style={styles.headerTitle}>Login</Text>
+        <View style={styles.headerSide} />
       </View>
       {renderContent()}
     </View>
@@ -137,62 +137,69 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
 };
 
 const UrlInput = ({ onSubmit }) => {
-  const [url, setUrl] = useState('');
+  const [host, setHost] = useState('');
+
+  const handleSubmit = () => {
+    const trimmed = host.trim();
+    if (trimmed) {
+      onSubmit(`https://${trimmed}`);
+    }
+  };
 
   return (
-    <>
-      <View style={styles.urlInputRow}>
-        <View style={styles.urlInputWrapper}>
-          <Text style={styles.urlInputPrefix}>https://</Text>
-          <Text
-            style={styles.urlInput}
-            onPress={() => {
-              // Simple prompt for URL
-              const { Alert } = require('react-native');
-              Alert.prompt?.('Server URL', 'Enter your server hostname:', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'OK', onPress: (val) => val && onSubmit(`https://${val}`) },
-              ], 'plain-text', 'virtual.swecha.org') || onSubmit('https://virtual.swecha.org');
-            }}
-          >
-            {url || 'virtual.swecha.org'}
-          </Text>
-        </View>
+    <View style={styles.urlRow}>
+      <View style={styles.urlField}>
+        <Text style={styles.urlPrefix}>https://</Text>
+        <TextInput
+          style={styles.urlInput}
+          placeholder="virtual.swecha.org"
+          placeholderTextColor="#666666"
+          value={host}
+          onChangeText={setHost}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          returnKeyType="go"
+          onSubmitEditing={handleSubmit}
+        />
       </View>
-      <View style={styles.arrowButton} onTouchEnd={() => onSubmit(`https://${url || 'virtual.swecha.org'}`)}>
-        <Text style={styles.arrowText}>→</Text>
+      <View style={styles.urlArrow} onTouchEnd={handleSubmit}>
+        <Text style={styles.urlArrowText}>→</Text>
       </View>
-    </>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: '#1a1a2e',
-    paddingTop: 60,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 10,
+    backgroundColor: '#1a1a2e',
+    paddingHorizontal: 16,
+    paddingTop: 44,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a3e',
   },
-  backButton: {
+  headerSide: {
+    minWidth: 70,
+  },
+  headerBack: {
     color: '#ffffff',
     fontSize: 16,
-    padding: 8,
+    paddingVertical: 4,
   },
-  title: {
+  headerTitle: {
     color: '#ffffff',
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: 'bold',
   },
-  placeholder: {
-    width: 60,
-  },
-  urlEntryContainer: {
+  body: {
     flex: 1,
     paddingHorizontal: 20,
     justifyContent: 'center',
@@ -206,76 +213,82 @@ const styles = StyleSheet.create({
   subtitle: {
     color: '#888888',
     fontSize: 13,
-    marginBottom: 20,
+    lineHeight: 19,
+    marginBottom: 24,
   },
-  urlInputRow: {
+  urlRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  urlInputWrapper: {
+  urlField: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#2a2a3e',
     borderRadius: 10,
-    paddingHorizontal: 12,
+    paddingLeft: 12,
+    height: 48,
   },
-  urlInputPrefix: {
+  urlPrefix: {
     color: '#666666',
     fontSize: 14,
+    marginRight: 4,
   },
   urlInput: {
     flex: 1,
     color: '#ffffff',
-    padding: 14,
     fontSize: 14,
+    height: 48,
   },
-  arrowButton: {
-    width: 50,
-    height: 50,
+  urlArrow: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#0066cc',
-    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  arrowText: {
+  urlArrowText: {
     color: '#ffffff',
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 22,
   },
-  webviewContainer: {
+  webviewWrap: {
     flex: 1,
   },
-  webview: {
-    flex: 1,
-  },
-  successOverlay: {
+  overlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: '#1a1a2e',
-    padding: 24,
+    paddingVertical: 24,
+    paddingHorizontal: 20,
     alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: '#2a2a3e',
   },
-  successTitle: {
+  overlayCenter: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(26, 26, 46, 0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  overlayTitle: {
     color: '#00cc00',
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 8,
   },
-  successUser: {
+  overlayUser: {
     color: '#ffffff',
     fontSize: 16,
     marginBottom: 16,
   },
-  continueButton: {
+  continueBtn: {
     backgroundColor: '#0066cc',
     paddingVertical: 12,
-    paddingHorizontal: 32,
+    paddingHorizontal: 36,
     borderRadius: 10,
   },
   continueText: {
@@ -283,17 +296,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  loadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(26, 26, 46, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
+  overlayText: {
     color: '#ffffff',
     fontSize: 14,
     marginTop: 12,

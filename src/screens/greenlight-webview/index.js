@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { View, TouchableOpacity, Text, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { URL_TYPES, detectUrlType } from '../../utils/url-detection';
-import Styled from './styles';
 
 const GreenlightWebView = ({ roomUrl, onJoinUrl, onBack }) => {
   const [loading, setLoading] = useState(true);
@@ -11,27 +10,29 @@ const GreenlightWebView = ({ roomUrl, onJoinUrl, onBack }) => {
     const { type, url } = detectUrlType(request.url);
     if (type === URL_TYPES.BBB_JOIN) {
       onJoinUrl(url);
-      return false; // Prevent WebView from loading the BBB URL
+      return false;
     }
     return true;
   };
 
   const handleNavigationChange = (navState) => {
-    const { type, url } = detectUrlType(navState.url);
+    const { type, url: detected } = detectUrlType(navState.url);
     if (type === URL_TYPES.BBB_JOIN) {
-      onJoinUrl(url);
+      onJoinUrl(detected);
     }
   };
 
   return (
-    <Styled.WebviewContainer>
-      <Styled.Header>
-        <Styled.BackButton onPress={onBack}>
-          <Styled.BackButtonText>← Back</Styled.BackButtonText>
-        </Styled.BackButton>
-        <Styled.Title numberOfLines={1}>Greenlight</Styled.Title>
-        {loading && <ActivityIndicator size="small" color="#ffffff" />}
-      </Styled.Header>
+    <View style={styles.screen}>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.headerSide} onPress={onBack}>
+          <Text style={styles.headerBack}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1}>Greenlight</Text>
+        <View style={styles.headerSide}>
+          {loading && <ActivityIndicator size="small" color="#ffffff" />}
+        </View>
+      </View>
       <WebView
         source={{ uri: roomUrl }}
         onNavigationStateChange={handleNavigationChange}
@@ -40,15 +41,31 @@ const GreenlightWebView = ({ roomUrl, onJoinUrl, onBack }) => {
         javaScriptEnabled
         domStorageEnabled
         startInLoadingState
-        // Security: restrict WebView capabilities
         allowFileAccess={false}
         allowUniversalAccessFromFileURLs={false}
         allowFileAccessFromFileURLs={false}
         mixedContentMode="compatibility"
         style={{ flex: 1 }}
       />
-    </Styled.WebviewContainer>
+    </View>
   );
 };
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#1a1a2e' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 44,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a3e',
+  },
+  headerSide: { minWidth: 70, justifyContent: 'center' },
+  headerBack: { color: '#ffffff', fontSize: 16, paddingVertical: 4 },
+  headerTitle: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
+});
 
 export default GreenlightWebView;
