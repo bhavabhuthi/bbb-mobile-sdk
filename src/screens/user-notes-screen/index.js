@@ -364,12 +364,7 @@ const UserNotesScreen = () => {
 
   // Shared notes require cookie-based auth that the native app doesn't have.
   // Detect connection failure and offer to open in browser.
-  const handleOpenInBrowser = useCallback(() => {
-    const host = client?.meetingData?.host;
-    if (host) {
-      Linking.openURL(`https://${host}/html5client/?sessionToken=${sessionToken}`).catch(() => {});
-    }
-  }, [client, sessionToken]);
+  // (handleOpenInBrowser is defined inside NotesEditorWebView via overlay)
 
   if (!padId || !sessionToken || !apiHost) {
     return withChrome(<Styled.Spinner animating size="large" />);
