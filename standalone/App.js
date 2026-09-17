@@ -1,24 +1,41 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, createContext, useContext } from 'react';
 import { View } from 'react-native';
 import { Provider } from 'react-redux';
 import { store } from '../src/store/redux/store';
+import HomeScreen from '../src/screens/home-screen';
+import AddRoomScreen from '../src/screens/add-room-screen';
 import ServerInputScreen from '../src/screens/server-input-screen';
 import GreenlightWebView from '../src/screens/greenlight-webview';
+import useRoomHistory from '../src/hooks/useRoomHistory';
+import { parseGreenlightUrl } from '../src/utils/parseRoomUrl';
 import Colors from '../src/constants/colors';
 
 /**
- * Standalone app wrapper that provides server URL input and Greenlight room
- * detection before delegating to the core BBB SDK App component.
+ * Standalone app wrapper that provides:
+ * - Home screen with quick-access room cards
+ * - Add room manually
+ * - Greenlight WebView join flow
+ * - Direct BBB URL join
  *
- * This keeps standalone-specific UI out of the SDK's App.js, which is also
- * used as an embeddable component by host applications.
+ * All standalone-specific UI is isolated here. The core App.js is used
+ * only for the actual conference (BBB meeting).
+ */
+
+// Simple navigation context (no react-navigation dependency needed)
+const NavigationContext = createContext({});
+
+const useNavigation = () => useContext(NavigationContext);
+
+/**
+ * Navigation: Home → WebView → Conference → Home (after leave)
  */
 const StandaloneApp = (props) => {
+  const [currentScreen, setCurrentScreen] = useState('home'); // home | addRoom | serverInput | webview | conference
   const [serverUrl, setServerUrl] = useState(null);
   const [webviewUrl, setWebviewUrl] = useState(null);
+  const { saveRoom } = useRoomHistory();
 
   const injectStore = useCallback(() => {
-    // Dynamic import to avoid circular deps at module level
     const { injectStore: injectStoreVM } = require('../src/services/webrtc/video-manager');
     const { injectStore: injectStoreSM } = require('../src/services/webrtc/screenshare-manager');
     const { injectStore: injectStoreAM } = require('../src/services/webrtc/audio-manager');
@@ -31,68 +48,128 @@ const StandaloneApp = (props) => {
     injectStore();
   }, [injectStore]);
 
-  // Handle ServerInputScreen submit
+  // Navigate to WebView for a room
+  const handleJoinRoom = useCallback((room) => {
+    // Save/update room in history
+    saveRoom(room);
+    // Open WebView to resolve the Greenlight join URL
+    setWebviewUrl(room.greenlightUrl || room.bbbUrl);
+    setCurrentScreen('webview');
+  }, [saveRoom]);
+
+  // Navigate to Add Room screen
+  const handleAddRoom = useCallback(() => {
+    setCurrentScreen('addRoom');
+  }, []);
+
+  // Navigate to Server Input (paste URL)
+  const handleJoinWithUrl = useCallback(() => {
+    setCurrentScreen('serverInput');
+  }, []);
+
+  // Handle server input submit
   const handleServerSubmit = useCallback((result) => {
     if (result.type === 'webview') {
       setWebviewUrl(result.url);
+      setCurrentScreen('webview');
     } else {
       setServerUrl(result.url);
+      // Save to history as a direct BBB join
+      const parsed = parseGreenlightUrl(result.url);
+      if (parsed) {
+        saveRoom({
+          name: parsed.roomId,
+          greenlightUrl: parsed.greenlightUrl,
+          bbbHost: parsed.host,
+          roomId: parsed.roomId,
+          icon: '📅',
+        });
+      }
+      setCurrentScreen('conference');
     }
-  }, []);
+  }, [saveRoom]);
 
   // Handle WebView join URL interception
   const handleWebViewJoin = useCallback((bbbJoinUrl) => {
     setServerUrl(bbbJoinUrl);
     setWebviewUrl(null);
+    setCurrentScreen('conference');
   }, []);
 
-  // Go back from WebView to input screen
+  // Go back from WebView
   const handleWebViewBack = useCallback(() => {
     setWebviewUrl(null);
+    setCurrentScreen('home');
   }, []);
 
-  // Handle leaving the meeting — reset to input screen
+  // Handle leaving the meeting
   const handleLeaveSession = useCallback(() => {
-    // Clear the server URL so the app returns to the input screen
     setServerUrl(null);
+    setCurrentScreen('home');
   }, []);
 
-  // Use the core BBB SDK App component for the actual conference
+  // Handle saving a new room from AddRoomScreen
+  const handleSaveRoom = useCallback((room) => {
+    saveRoom(room);
+  }, [saveRoom]);
+
   const { default: CoreApp } = require('../App');
 
-  // If showing WebView for Greenlight room
-  if (webviewUrl) {
-    return (
-      <Provider store={store}>
-        <View style={{ flex: 1, backgroundColor: Colors.blueBackgroundColor }}>
+  // Render current screen
+  const renderScreen = () => {
+    switch (currentScreen) {
+      case 'addRoom':
+        return (
+          <AddRoomScreen
+            onSave={handleSaveRoom}
+            onBack={() => setCurrentScreen('home')}
+          />
+        );
+
+      case 'serverInput':
+        return (
+          <ServerInputScreen
+            onSubmit={handleServerSubmit}
+            onBack={() => setCurrentScreen('home')}
+          />
+        );
+
+      case 'webview':
+        return (
           <GreenlightWebView
             roomUrl={webviewUrl}
             onJoinUrl={handleWebViewJoin}
             onBack={handleWebViewBack}
           />
-        </View>
-      </Provider>
-    );
-  }
+        );
 
-  // If no joinURL provided, show server input screen
-  if (!serverUrl) {
-    return (
-      <Provider store={store}>
-        <View style={{ flex: 1, backgroundColor: Colors.blueBackgroundColor }}>
-          <ServerInputScreen onSubmit={handleServerSubmit} />
-        </View>
-      </Provider>
-    );
-  }
+      case 'conference':
+        return (
+          <CoreApp
+            {...props}
+            joinURL={serverUrl}
+            onLeaveSession={handleLeaveSession}
+          />
+        );
 
-  // Show the core BBB SDK app with the join URL
+      case 'home':
+      default:
+        return (
+          <HomeScreen
+            onJoinRoom={handleJoinRoom}
+            onJoinWithUrl={handleJoinWithUrl}
+            onAddRoom={handleAddRoom}
+          />
+        );
+    }
+  };
+
   return (
-    <CoreApp
-      {...props}
-      joinURL={serverUrl}
-      onLeaveSession={handleLeaveSession}
-    />
+    <Provider store={store}>
+      <View style={{ flex: 1, backgroundColor: Colors.blueBackgroundColor }}>
+        {renderScreen()}
+      </View>
+    </Provider>
   );
 };
 

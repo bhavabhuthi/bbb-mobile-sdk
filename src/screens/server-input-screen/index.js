@@ -3,7 +3,7 @@ import { View, TextInput, TouchableOpacity, Text } from 'react-native';
 import { URL_TYPES, detectUrlType } from '../../utils/url-detection';
 import Styled from './styles';
 
-const ServerInputScreen = ({ onSubmit }) => {
+const ServerInputScreen = ({ onSubmit, onBack }) => {
   const [url, setUrl] = useState('');
 
   const handleSubmit = () => {
@@ -32,6 +32,11 @@ const ServerInputScreen = ({ onSubmit }) => {
 
   return (
     <Styled.Container>
+      {onBack && (
+        <TouchableOpacity onPress={onBack} style={{ alignSelf: 'flex-start', marginBottom: 16, padding: 8 }}>
+          <Text style={{ color: '#ffffff', fontSize: 16 }}>← Back</Text>
+        </TouchableOpacity>
+      )}
       <Styled.Label>Enter BBB or Greenlight URL</Styled.Label>
       <Styled.Input
         placeholder="https://virtual.swecha.org/rooms/your-room"
