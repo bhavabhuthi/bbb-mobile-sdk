@@ -1,26 +1,61 @@
 import { useState, useCallback } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
 import { parseGreenlightUrl } from '../../utils/parseRoomUrl';
 
-const DEFAULT_ICONS = ['📅', '📚', '💼', '🎓', '🔧', '🎯', '💡', '🏠', '🎮', '🎵'];
-
-const AddRoomScreen = ({ onSave, onBack }) => {
+const AddRoomScreen = ({ onSave, onBack, credentials }) => {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
-  const [selectedIcon, setSelectedIcon] = useState('📅');
+  const [selectedIcon, setIcon] = useState('📅');
   const [error, setError] = useState('');
+  const [fetching, setFetching] = useState(false);
 
-  const handleUrlChange = useCallback((text) => {
+  const DEFAULT_ICONS = ['📅', '📚', '💼', '🎓', '🔧', '🎯', '💡', '🏠', '🎮', '🎵'];
+
+  // Fetch room name from Greenlight
+  const fetchRoomName = useCallback(async (roomUrl) => {
+    const parsed = parseGreenlightUrl(roomUrl);
+    if (!parsed) return null;
+
+    setFetching(true);
+    try {
+      // Try to fetch the room's public page and extract the title
+      const response = await fetch(parsed.greenlightUrl, {
+        headers: { 'Accept': 'text/html' },
+      });
+      const html = await response.text();
+
+      // Extract title from HTML
+      const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+      if (titleMatch) {
+        // Greenlight titles are usually "Room Name | Greenlight"
+        return titleMatch[1].replace(/\s*\|\s*Greenlight\s*$/, '').trim();
+      }
+    } catch (e) {
+      // Ignore fetch errors — user can enter name manually
+    } finally {
+      setFetching(false);
+    }
+    return null;
+  }, []);
+
+  const handleUrlChange = useCallback(async (text) => {
     setUrl(text);
     setError('');
-    // Auto-detect name from URL
+
     const parsed = parseGreenlightUrl(text);
     if (parsed && !name) {
-      setName(parsed.roomId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
+      // Auto-fetch room name from Greenlight
+      const fetchedName = await fetchRoomName(text);
+      if (fetchedName) {
+        setName(fetchedName);
+      } else {
+        // Fallback: use room ID as name
+        setName(parsed.roomId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
+      }
     }
-  }, [name]);
+  }, [name, fetchRoomName]);
 
   const handleSave = useCallback(() => {
     if (!url.trim()) {
@@ -34,15 +69,13 @@ const AddRoomScreen = ({ onSave, onBack }) => {
       return;
     }
 
-    const room = {
+    onSave({
       name: name.trim() || parsed.roomId,
       greenlightUrl: parsed.greenlightUrl,
       bbbHost: parsed.host,
       roomId: parsed.roomId,
       icon: selectedIcon,
-    };
-
-    onSave(room);
+    });
     onBack();
   }, [name, url, selectedIcon, onSave, onBack]);
 
@@ -56,39 +89,39 @@ const AddRoomScreen = ({ onSave, onBack }) => {
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.content}>
-        <Text style={styles.label}>Room Name</Text>
+      <View style={styles.content}>
+        <Text style={styles.label}>Greenlight Room URL</Text>
+        <View style={styles.urlRow}>
+          <TextInput
+            style={styles.urlInput}
+            placeholder="https://server/rooms/room-id"
+            placeholderTextColor="#666666"
+            value={url}
+            onChangeText={handleUrlChange}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+          {fetching && <ActivityIndicator style={styles.loader} size="small" color="#ffffff" />}
+        </View>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        <Text style={styles.label}>Room Name {fetching && '(fetching...)'}</Text>
         <TextInput
           style={styles.input}
-          placeholder="e.g., Weekly Standup"
+          placeholder="Room name (auto-detected from URL)"
           placeholderTextColor="#666666"
           value={name}
           onChangeText={setName}
         />
-
-        <Text style={styles.label}>Greenlight Room URL</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="https://server/rooms/room-id"
-          placeholderTextColor="#666666"
-          value={url}
-          onChangeText={handleUrlChange}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-        />
-        {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Text style={styles.label}>Icon</Text>
         <View style={styles.iconGrid}>
           {DEFAULT_ICONS.map((icon) => (
             <TouchableOpacity
               key={icon}
-              style={[
-                styles.iconButton,
-                selectedIcon === icon && styles.iconButtonSelected,
-              ]}
-              onPress={() => setSelectedIcon(icon)}
+              style={[styles.iconButton, selectedIcon === icon && styles.iconButtonSelected]}
+              onPress={() => setIcon(icon)}
             >
               <Text style={styles.iconText}>{icon}</Text>
             </TouchableOpacity>
@@ -98,7 +131,7 @@ const AddRoomScreen = ({ onSave, onBack }) => {
         <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
           <Text style={styles.saveButtonText}>Save Room</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
     </View>
   );
 };
@@ -141,6 +174,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 8,
     marginTop: 16,
+  },
+  urlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  urlInput: {
+    flex: 1,
+    backgroundColor: '#2a2a3e',
+    color: '#ffffff',
+    padding: 12,
+    borderRadius: 10,
+    fontSize: 14,
+  },
+  loader: {
+    marginLeft: 8,
   },
   input: {
     backgroundColor: '#2a2a3e',
