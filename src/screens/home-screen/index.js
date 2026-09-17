@@ -7,7 +7,7 @@ import RoomCard from '../../components/room-card';
 
 const DEFAULT_ICONS = ['📅', '📚', '💼', '🎓', '🔧', '🎯', '💡', '🏠'];
 
-const HomeScreen = ({ onJoinRoom, onJoinWithUrl, onAddRoom }) => {
+const HomeScreen = ({ onJoinRoom, onJoinWithUrl, onAddRoom, credentials, onLogin, onLogout }) => {
   const { rooms, loading, deleteRoom, updateRoom } = useRoomHistory();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -111,6 +111,23 @@ const HomeScreen = ({ onJoinRoom, onJoinWithUrl, onAddRoom }) => {
             </Text>
           </View>
         )}
+
+        <View style={styles.authBar}>
+          {credentials ? (
+            <View style={styles.loggedInState}>
+              <Text style={styles.loggedInText} numberOfLines={1}>
+                👤 {credentials.username} @ {credentials.server?.replace(/^https?:\/\//, '')}
+              </Text>
+              <TouchableOpacity onPress={onLogout}>
+                <Text style={styles.logoutText}>Logout</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.loginButton} onPress={onLogin}>
+              <Text style={styles.loginButtonText}>👤 Login (optional)</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         <TouchableOpacity style={styles.urlButton} onPress={onJoinWithUrl}>
           <Text style={styles.urlButtonText}>🔗  Join with URL</Text>
@@ -234,6 +251,37 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   addRoomButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+  },
+  authBar: {
+    marginBottom: 16,
+  },
+  loggedInState: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#2a2a3e',
+    padding: 12,
+    borderRadius: 10,
+  },
+  loggedInText: {
+    color: '#ffffff',
+    fontSize: 13,
+    flex: 1,
+  },
+  logoutText: {
+    color: '#ff6666',
+    fontSize: 13,
+    marginLeft: 8,
+  },
+  loginButton: {
+    backgroundColor: '#2a2a3e',
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  loginButtonText: {
     color: '#ffffff',
     fontSize: 14,
   },
