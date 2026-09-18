@@ -91,6 +91,7 @@ const StandaloneApp = (props) => {
   // Handle login/logout
   const handleLogin = useCallback((creds) => {
     saveCredentials(creds);
+    setCurrentScreen('home');
   }, [saveCredentials]);
 
   const { default: CoreApp } = require('../App');

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
+  View, Text, TextInput, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 
@@ -8,12 +8,32 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
   const webViewRef = useRef(null);
   const [serverUrl, setServerUrl] = useState('');
   const [detectedUser, setDetectedUser] = useState('');
-  const [pageState, setPageState] = useState('enter_url'); // enter_url | logging_in | logged_in
+  const [pageState, setPageState] = useState('enter_url');
+  const [error, setError] = useState('');
   const [webViewLoading, setWebViewLoading] = useState(false);
 
+  const validateUrl = (url) => {
+    const trimmed = url.trim();
+    if (!trimmed) return 'Please enter a URL';
+    try {
+      const parsed = new URL(trimmed);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return 'URL must start with http:// or https://';
+      }
+      return '';
+    } catch {
+      return 'Please enter a valid URL (e.g., https://virtual.swecha.org)';
+    }
+  };
+
   const handleUrlSubmit = useCallback((url) => {
+    const validationError = validateUrl(url);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError('');
     const normalized = url.trim().replace(/\/+$/, '');
-    if (!normalized) return;
     setServerUrl(normalized);
     setPageState('logging_in');
     setWebViewLoading(true);
@@ -22,7 +42,6 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
   const handleNavigationStateChange = useCallback((navState) => {
     const { url } = navState;
 
-    // Capture server URL
     if (url && !serverUrl) {
       try {
         const parsed = new URL(url);
@@ -32,12 +51,11 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
       }
     }
 
-    // Detect successful login: redirected away from login/signin pages
+    // Detect successful login
     if (serverUrl && !url.includes('/login') && !url.includes('/signin')) {
       setPageState('logged_in');
       setWebViewLoading(false);
 
-      // Try to extract user info from the page
       const extractScript = `
         try {
           const nameEl = document.querySelector('[data-testid="user-name"]')
@@ -45,11 +63,7 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
             || document.querySelector('header .name')
             || document.querySelector('.navbar .name');
           const name = nameEl?.textContent?.trim() || '';
-
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'user_info',
-            name: name
-          }));
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'user_info', name }));
         } catch(e) {}
         true;
       `;
@@ -70,8 +84,7 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
 
   const handleContinue = useCallback(() => {
     onLoggedIn({ server: serverUrl, username: detectedUser || 'User' });
-    onBack();
-  }, [serverUrl, detectedUser, onLoggedIn, onBack]);
+  }, [serverUrl, detectedUser, onLoggedIn]);
 
   const handleBack = useCallback(() => {
     if (pageState === 'logging_in' || pageState === 'logged_in') {
@@ -86,18 +99,16 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
   const renderContent = () => {
     if (pageState === 'enter_url') {
       return (
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.body}
-        >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.body}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.bodyInner}>
               <View style={styles.urlSection}>
                 <Text style={styles.label}>Greenlight Server URL</Text>
                 <Text style={styles.subtitle}>
-                  Enter your organization's Greenlight URL to sign in
+                  Enter your organization's Greenlight URL. You'll sign in through your browser.
                 </Text>
                 <UrlInput onSubmit={handleUrlSubmit} />
+                {error ? <Text style={styles.errorText}>{error}</Text> : null}
               </View>
             </View>
           </TouchableWithoutFeedback>
@@ -109,7 +120,7 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
       <View style={styles.webviewWrap}>
         <WebView
           ref={webViewRef}
-          source={{ uri: `${serverUrl}/login` }}
+          source={{ uri: serverUrl }}
           onNavigationStateChange={handleNavigationStateChange}
           onMessage={handleMessage}
           onError={() => setWebViewLoading(false)}
@@ -124,9 +135,7 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
         {pageState === 'logged_in' && (
           <View style={styles.overlay}>
             <Text style={styles.overlayTitle}>✓ Logged In</Text>
-            {detectedUser ? (
-              <Text style={styles.overlayUser}>Welcome, {detectedUser}</Text>
-            ) : null}
+            {detectedUser ? <Text style={styles.overlayUser}>Welcome, {detectedUser}</Text> : null}
             <View style={styles.continueBtn} onTouchEnd={handleContinue}>
               <Text style={styles.continueText}>Continue →</Text>
             </View>
@@ -155,33 +164,27 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
 };
 
 const UrlInput = ({ onSubmit }) => {
-  const [host, setHost] = useState('');
+  const [url, setUrl] = useState('');
 
   const handleSubmit = () => {
-    const trimmed = host.trim();
-    if (trimmed) {
-      onSubmit(`https://${trimmed}`);
-    }
+    onSubmit(url);
   };
 
   return (
     <View style={styles.urlRow}>
-      <View style={styles.urlField}>
-        <Text style={styles.urlPrefix}>https://</Text>
-        <TextInput
-          style={styles.urlInput}
-          placeholder="virtual.swecha.org"
-          placeholderTextColor="#666666"
-          value={host}
-          onChangeText={setHost}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          returnKeyType="go"
-          onSubmitEditing={handleSubmit}
-          blurOnSubmit
-        />
-      </View>
+      <TextInput
+        style={styles.urlField}
+        placeholder="virtual.swecha.org  or  https://virtual.swecha.org"
+        placeholderTextColor="#666666"
+        value={url}
+        onChangeText={setUrl}
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="url"
+        returnKeyType="go"
+        onSubmitEditing={handleSubmit}
+        blurOnSubmit
+      />
       <View style={styles.urlArrow} onTouchEnd={handleSubmit}>
         <Text style={styles.urlArrowText}>→</Text>
       </View>
@@ -198,7 +201,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1a1a2e',
     paddingHorizontal: 16,
     paddingTop: 44,
     paddingBottom: 12,
@@ -229,7 +231,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   urlSection: {
-    marginTop: -100, // Shift up so keyboard doesn't cover it
+    marginTop: -100,
   },
   label: {
     color: '#ffffff',
@@ -250,36 +252,31 @@ const styles = StyleSheet.create({
   },
   urlField: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#2a2a3e',
-    borderRadius: 10,
-    paddingLeft: 12,
-    height: 48,
-  },
-  urlPrefix: {
-    color: '#666666',
-    fontSize: 14,
-    marginRight: 4,
-  },
-  urlInput: {
-    flex: 1,
     color: '#ffffff',
-    fontSize: 14,
+    paddingHorizontal: 12,
     height: 48,
+    borderRadius: 10,
+    fontSize: 14,
   },
   urlArrow: {
     width: 48,
     height: 48,
     borderRadius: 24,
     backgroundColor: '#0066cc',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   urlArrowText: {
     color: '#ffffff',
     fontSize: 22,
+    lineHeight: 24,
     textAlign: 'center',
+  },
+  errorText: {
+    color: '#ff6666',
+    fontSize: 12,
+    marginTop: 8,
   },
   webviewWrap: {
     flex: 1,
