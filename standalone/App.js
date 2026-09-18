@@ -89,19 +89,18 @@ const StandaloneApp = (props) => {
   }, [saveRoom]);
 
   // Handle login/logout
-  const handleLogin = useCallback((creds) => {
+  const handleLogin = useCallback(async (creds) => {
     saveCredentials(creds);
     // Save any rooms captured from Greenlight API
     if (creds.rooms?.length) {
-      creds.rooms.forEach((room) => {
-        saveRoom({
-          name: room.name || room.friendly_id || 'Room',
-          greenlightUrl: `https://${creds.server?.replace(/^https?:\/\//, '')}/rooms/${room.friendly_id}`,
-          bbbHost: creds.server?.replace(/^https?:\/\//, '') || '',
-          roomId: room.friendly_id || room.id || '',
-          icon: '📅',
-        });
-      });
+      // Save all rooms in parallel
+      await Promise.all(creds.rooms.map((room) => saveRoom({
+        name: room.name || room.friendly_id || 'Room',
+        greenlightUrl: `https://${creds.server?.replace(/^https?:\/\//, '')}/rooms/${room.friendly_id}`,
+        bbbHost: creds.server?.replace(/^https?:\/\//, '') || '',
+        roomId: room.friendly_id || room.id || '',
+        icon: '📅',
+      })));
     }
     setCurrentScreen('home');
   }, [saveCredentials, saveRoom]);
