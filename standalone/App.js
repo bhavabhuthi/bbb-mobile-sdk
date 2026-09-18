@@ -110,7 +110,7 @@ const StandaloneApp = (props) => {
       case 'login':
         return (
           <LoginScreen
-            onLogin={handleLogin}
+            onLoggedIn={handleLogin}
             onBack={() => setCurrentScreen('home')}
             existingCredentials={credentials}
           />
