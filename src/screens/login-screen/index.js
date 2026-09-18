@@ -4,8 +4,10 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 
+const DEFAULT_TESTING_URL = 'https://virtual.swecha.org';
+
 const LoginScreen = ({ onLoggedIn, onBack }) => {
-  const [serverUrl, setServerUrl] = useState('');
+  const [serverUrl, setServerUrl] = useState(DEFAULT_TESTING_URL);
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [showWebView, setShowWebView] = useState(false);
@@ -44,6 +46,10 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
       const message = JSON.parse(event.nativeEvent.data);
       if (message.type === 'user_info' && message.name && !username) {
         setUsername(message.name);
+      } else if (message.type === 'api_data') {
+        if (message.userName && !username) {
+          setUsername(message.userName);
+        }
       }
     } catch (e) {
       // ignore
@@ -59,33 +65,64 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
   }, [showWebView, onBack]);
 
   if (showWebView) {
-    // Script injected on every page load to detect username
+    // Script that intercepts fetch() API responses to extract user + rooms data
     const extractUsernameScript = `
       (function() {
-        try {
-          // Only run if we're NOT on a login/signin page
-          var path = window.location.pathname;
-          if (path.includes('/login') || path.includes('/signin')) return;
+        // Only intercept if not on login page
+        if (window.location.pathname.includes('/login') || window.location.pathname.includes('/signin')) {
+          return;
+        }
 
-          // Try multiple selectors where Greenlight might show the username
-          var nameEl = document.querySelector('[data-testid="user-name"]')
-            || document.querySelector('.user-name')
-            || document.querySelector('header .name')
-            || document.querySelector('.navbar .name')
-            || document.querySelector('[class*="user"] [class*="name"]')
-            || document.querySelector('.dropdown-toggle');
+        // Intercept fetch requests to capture API responses
+        if (!window.__bbbFetchPatched) {
+          window.__bbbFetchPatched = true;
+          var origFetch = window.fetch;
+          window.fetch = function() {
+            return origFetch.apply(this, arguments).then(function(response) {
+              var url = typeof arguments[0] === 'string' ? arguments[0] : arguments[0]?.url || '';
 
-          var name = nameEl?.textContent?.trim() || '';
+              // Clone response so we can read it without consuming it
+              var clone = response.clone();
+              clone.json().then(function(data) {
+                try {
+                  // Check for user info in various API endpoints
+                  var userName = null;
+                  var rooms = null;
 
-          // Only send if we found a name and it's different from last sent
-          if (name && name !== window.__lastExtractedName) {
-            window.__lastExtractedName = name;
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'user_info',
-              name: name
-            }));
-          }
-        } catch(e) {}
+                  // /api/v1/rooms.json returns array of rooms
+                  if (url.includes('/api/v1/rooms') && Array.isArray(data?.data)) {
+                    rooms = data.data;
+                    // Try to find user name from room owner data
+                    if (data.data[0]?.user?.name) {
+                      userName = data.data[0].user.name;
+                    }
+                  }
+
+                  // /api/v1/users/me.json or similar user endpoint
+                  if (url.includes('/api/v1/users') && data?.data?.name) {
+                    userName = data.data.name;
+                  }
+
+                  // /api/v1/sessions or /api/v1/login
+                  if (url.includes('/api/v1/session') && data?.name) {
+                    userName = data.name;
+                  }
+
+                  // If we found data, send it back
+                  if (userName || rooms) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                      type: 'api_data',
+                      userName: userName || null,
+                      rooms: rooms || null
+                    }));
+                  }
+                } catch(e) {}
+              }).catch(function() {});
+
+              return response;
+            });
+          };
+        }
       })();
       true;
     `;
