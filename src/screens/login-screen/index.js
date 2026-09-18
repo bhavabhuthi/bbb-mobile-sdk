@@ -1,23 +1,28 @@
 import { useState, useCallback, useRef } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import {
+  View, Text, TextInput, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
+} from 'react-native';
 import { WebView } from 'react-native-webview';
 
 const LoginScreen = ({ onLoggedIn, onBack }) => {
   const webViewRef = useRef(null);
   const [serverUrl, setServerUrl] = useState('');
   const [detectedUser, setDetectedUser] = useState('');
-  const [pageState, setPageState] = useState('enter_url');
+  const [pageState, setPageState] = useState('enter_url'); // enter_url | logging_in | logged_in
+  const [webViewLoading, setWebViewLoading] = useState(false);
 
   const handleUrlSubmit = useCallback((url) => {
     const normalized = url.trim().replace(/\/+$/, '');
     if (!normalized) return;
     setServerUrl(normalized);
     setPageState('logging_in');
+    setWebViewLoading(true);
   }, []);
 
   const handleNavigationStateChange = useCallback((navState) => {
     const { url } = navState;
 
+    // Capture server URL
     if (url && !serverUrl) {
       try {
         const parsed = new URL(url);
@@ -27,14 +32,18 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
       }
     }
 
+    // Detect successful login: redirected away from login/signin pages
     if (serverUrl && !url.includes('/login') && !url.includes('/signin')) {
       setPageState('logged_in');
+      setWebViewLoading(false);
 
+      // Try to extract user info from the page
       const extractScript = `
         try {
           const nameEl = document.querySelector('[data-testid="user-name"]')
             || document.querySelector('.user-name')
-            || document.querySelector('header .name');
+            || document.querySelector('header .name')
+            || document.querySelector('.navbar .name');
           const name = nameEl?.textContent?.trim() || '';
 
           window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -68,6 +77,7 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
     if (pageState === 'logging_in' || pageState === 'logged_in') {
       setPageState('enter_url');
       setDetectedUser('');
+      setWebViewLoading(false);
     } else {
       onBack();
     }
@@ -76,13 +86,22 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
   const renderContent = () => {
     if (pageState === 'enter_url') {
       return (
-        <View style={styles.body}>
-          <Text style={styles.label}>Greenlight Server URL</Text>
-          <Text style={styles.subtitle}>
-            Enter your organization's Greenlight URL to sign in
-          </Text>
-          <UrlInput onSubmit={handleUrlSubmit} />
-        </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.body}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.bodyInner}>
+              <View style={styles.urlSection}>
+                <Text style={styles.label}>Greenlight Server URL</Text>
+                <Text style={styles.subtitle}>
+                  Enter your organization's Greenlight URL to sign in
+                </Text>
+                <UrlInput onSubmit={handleUrlSubmit} />
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       );
     }
 
@@ -93,6 +112,8 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
           source={{ uri: `${serverUrl}/login` }}
           onNavigationStateChange={handleNavigationStateChange}
           onMessage={handleMessage}
+          onError={() => setWebViewLoading(false)}
+          onHttpError={() => setWebViewLoading(false)}
           javaScriptEnabled
           domStorageEnabled
           sharedCookiesEnabled
@@ -111,13 +132,6 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
             </View>
           </View>
         )}
-
-        {pageState === 'logging_in' && (
-          <View style={styles.overlayCenter}>
-            <ActivityIndicator size="large" color="#ffffff" />
-            <Text style={styles.overlayText}>Waiting for login...</Text>
-          </View>
-        )}
       </View>
     );
   };
@@ -129,7 +143,11 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
           <Text style={styles.headerBack}>← Back</Text>
         </View>
         <Text style={styles.headerTitle}>Login</Text>
-        <View style={styles.headerSide} />
+        <View style={styles.headerSide}>
+          {webViewLoading && pageState === 'logging_in' && (
+            <ActivityIndicator size="small" color="#ffffff" />
+          )}
+        </View>
       </View>
       {renderContent()}
     </View>
@@ -161,6 +179,7 @@ const UrlInput = ({ onSubmit }) => {
           keyboardType="url"
           returnKeyType="go"
           onSubmitEditing={handleSubmit}
+          blurOnSubmit
         />
       </View>
       <View style={styles.urlArrow} onTouchEnd={handleSubmit}>
@@ -188,6 +207,8 @@ const styles = StyleSheet.create({
   },
   headerSide: {
     minWidth: 70,
+    minHeight: 24,
+    justifyContent: 'center',
   },
   headerBack: {
     color: '#ffffff',
@@ -201,8 +222,14 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
+  },
+  bodyInner: {
+    flex: 1,
     paddingHorizontal: 20,
     justifyContent: 'center',
+  },
+  urlSection: {
+    marginTop: -100, // Shift up so keyboard doesn't cover it
   },
   label: {
     color: '#ffffff',
@@ -252,6 +279,7 @@ const styles = StyleSheet.create({
   urlArrowText: {
     color: '#ffffff',
     fontSize: 22,
+    textAlign: 'center',
   },
   webviewWrap: {
     flex: 1,
@@ -267,12 +295,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: '#2a2a3e',
-  },
-  overlayCenter: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26, 26, 46, 0.92)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   overlayTitle: {
     color: '#00cc00',
@@ -295,11 +317,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  overlayText: {
-    color: '#ffffff',
-    fontSize: 14,
-    marginTop: 12,
   },
 });
 

@@ -13,24 +13,52 @@ const AddRoomScreen = ({ onSave, onBack, credentials }) => {
 
   const DEFAULT_ICONS = ['📅', '📚', '💼', '🎓', '🔧', '🎯', '💡', '🏠', '🎮', '🎵'];
 
-  // Fetch room name from Greenlight
+  // Fetch room name from Greenlight page
   const fetchRoomName = useCallback(async (roomUrl) => {
     const parsed = parseGreenlightUrl(roomUrl);
     if (!parsed) return null;
 
     setFetching(true);
     try {
-      // Try to fetch the room's public page and extract the title
       const response = await fetch(parsed.greenlightUrl, {
         headers: { 'Accept': 'text/html' },
       });
       const html = await response.text();
 
-      // Extract title from HTML
+      // Try multiple strategies to find the room name:
+
+      // 1. Look for og:title meta tag (most reliable)
+      const ogTitle = html.match(/<meta\s+(?:property|name)="og:title"\s+content="([^"]+)"\s*\/?>/i);
+      if (ogTitle?.[1]) {
+        return cleanTitle(ogTitle[1]);
+      }
+
+      // 2. Look for meta title tag
+      const metaTitle = html.match(/<meta\s+name="title"\s+content="([^"]+)"\s*\/?>/i);
+      if (metaTitle?.[1]) {
+        return cleanTitle(metaTitle[1]);
+      }
+
+      // 3. Look for h1 tag with room name
+      const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+      if (h1Match?.[1]) {
+        return cleanRoomName(h1Match[1]);
+      }
+
+      // 4. Look for any element with data-testid="room-name"
+      const testId = html.match(/data-testid="room-name"[^>]*>([^<]+)</i);
+      if (testId?.[1]) {
+        return cleanRoomName(testId[1]);
+      }
+
+      // 5. Look for <title> tag as last resort
       const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-      if (titleMatch) {
-        // Greenlight titles are usually "Room Name | Greenlight"
-        return titleMatch[1].replace(/\s*\|\s*Greenlight\s*$/, '').trim();
+      if (titleMatch?.[1]) {
+        const title = cleanTitle(titleMatch[1]);
+        // Only use if it's not generic
+        if (title && !['greenlight', 'bigbluebutton', 'home', 'rooms'].includes(title.toLowerCase())) {
+          return title;
+        }
       }
     } catch (e) {
       // Ignore fetch errors — user can enter name manually
@@ -51,7 +79,7 @@ const AddRoomScreen = ({ onSave, onBack, credentials }) => {
       if (fetchedName) {
         setName(fetchedName);
       } else {
-        // Fallback: use room ID as name
+        // Fallback: use room ID formatted nicely
         setName(parsed.roomId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
       }
     }
@@ -135,6 +163,25 @@ const AddRoomScreen = ({ onSave, onBack, credentials }) => {
     </View>
   );
 };
+
+// Clean up titles from Greenlight
+function cleanTitle(title) {
+  if (!title) return '';
+  return title
+    .replace(/\s*\|\s*Greenlight\s*$/i, '')
+    .replace(/\s*-\s*Greenlight\s*$/i, '')
+    .replace(/\s*\|\s*BigBlueButton\s*$/i, '')
+    .replace(/\s*-\s*BigBlueButton\s*$/i, '')
+    .trim();
+}
+
+function cleanRoomName(name) {
+  if (!name) return '';
+  return name
+    .replace(/^\s*[-–—]\s*/, '')
+    .replace(/\s*[-–—]\s*$/, '')
+    .trim();
+}
 
 const styles = StyleSheet.create({
   container: {
