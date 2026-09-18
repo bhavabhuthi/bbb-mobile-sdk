@@ -65,64 +65,92 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
   }, [showWebView, onBack]);
 
   if (showWebView) {
-    // Script that intercepts fetch() API responses to extract user + rooms data
+    // Comprehensive script to intercept ALL API calls (fetch + XHR)
     const extractUsernameScript = `
       (function() {
-        // Only intercept if not on login page
         if (window.location.pathname.includes('/login') || window.location.pathname.includes('/signin')) {
           return;
         }
 
-        // Intercept fetch requests to capture API responses
-        if (!window.__bbbFetchPatched) {
-          window.__bbbFetchPatched = true;
-          var origFetch = window.fetch;
-          window.fetch = function() {
-            return origFetch.apply(this, arguments).then(function(response) {
-              var url = typeof arguments[0] === 'string' ? arguments[0] : arguments[0]?.url || '';
+        if (window.__bbbPatched) return;
+        window.__bbbPatched = true;
 
-              // Clone response so we can read it without consuming it
-              var clone = response.clone();
-              clone.json().then(function(data) {
-                try {
-                  // Check for user info in various API endpoints
-                  var userName = null;
-                  var rooms = null;
+        // Helper to parse and send API data
+        function processResponse(url, body) {
+          try {
+            var data = (typeof body === 'string') ? JSON.parse(body) : body;
+            if (!data) return;
 
-                  // /api/v1/rooms.json returns array of rooms
-                  if (url.includes('/api/v1/rooms') && Array.isArray(data?.data)) {
-                    rooms = data.data;
-                    // Try to find user name from room owner data
-                    if (data.data[0]?.user?.name) {
-                      userName = data.data[0].user.name;
-                    }
-                  }
+            var userName = null;
+            var rooms = null;
 
-                  // /api/v1/users/me.json or similar user endpoint
-                  if (url.includes('/api/v1/users') && data?.data?.name) {
-                    userName = data.data.name;
-                  }
+            // Greenlight wraps responses in { data: ... }
+            var payload = data.data || data;
 
-                  // /api/v1/sessions or /api/v1/login
-                  if (url.includes('/api/v1/session') && data?.name) {
-                    userName = data.name;
-                  }
+            // Rooms list: payload is an array
+            if (Array.isArray(payload)) {
+              rooms = payload;
+              // Try to find owner name from any room
+              for (var i = 0; i < payload.length; i++) {
+                if (payload[i]?.owner?.name) { userName = payload[i].owner.name; break; }
+                if (payload[i]?.user?.name) { userName = payload[i].user.name; break; }
+              }
+            }
 
-                  // If we found data, send it back
-                  if (userName || rooms) {
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                      type: 'api_data',
-                      userName: userName || null,
-                      rooms: rooms || null
-                    }));
-                  }
-                } catch(e) {}
-              }).catch(function() {});
+            // Single room object
+            if (payload?.friendly_id && payload?.name) {
+              rooms = [payload];
+              if (payload?.owner?.name) userName = payload.owner.name;
+              if (payload?.user?.name) userName = payload.user.name;
+            }
 
-              return response;
-            });
-          };
+            // User object
+            if (payload?.name && (payload?.id || payload?.userId || payload?.sub)) {
+              userName = payload.name;
+            }
+
+            // Send if we found anything useful
+            if (userName || rooms) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'api_data',
+                userName: userName,
+                rooms: rooms
+              }));
+            }
+          } catch(e) {}
         }
+
+        // === Patch fetch ===
+        var origFetch = window.fetch;
+        window.fetch = function() {
+          var url = typeof arguments[0] === 'string' ? arguments[0] : arguments[0]?.url || '';
+          return origFetch.apply(this, arguments).then(function(response) {
+            try {
+              var clone = response.clone();
+              clone.text().then(function(body) {
+                processResponse(url, body);
+              }).catch(function() {});
+            } catch(e) {}
+            return response;
+          });
+        };
+
+        // === Patch XMLHttpRequest ===
+        var origXHROpen = XMLHttpRequest.prototype.open;
+        var origXHRSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function() {
+          this.__url = arguments[1] || '';
+          return origXHROpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function() {
+          var self = this;
+          this.addEventListener('load', function() {
+            try {
+              processResponse(self.__url, self.responseText);
+            } catch(e) {}
+          });
+          return origXHRSend.apply(this, arguments);
+        };
       })();
       true;
     `;
