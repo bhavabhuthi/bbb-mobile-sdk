@@ -39,6 +39,17 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
     onLoggedIn({ server: serverUrl, username: username.trim() || 'User' });
   }, [serverUrl, username, onLoggedIn]);
 
+  const handleWebViewMessage = useCallback((event) => {
+    try {
+      const message = JSON.parse(event.nativeEvent.data);
+      if (message.type === 'user_info' && message.name && !username) {
+        setUsername(message.name);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [username]);
+
   const handleBack = useCallback(() => {
     if (showWebView) {
       setShowWebView(false);
@@ -48,6 +59,37 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
   }, [showWebView, onBack]);
 
   if (showWebView) {
+    // Script injected on every page load to detect username
+    const extractUsernameScript = `
+      (function() {
+        try {
+          // Only run if we're NOT on a login/signin page
+          var path = window.location.pathname;
+          if (path.includes('/login') || path.includes('/signin')) return;
+
+          // Try multiple selectors where Greenlight might show the username
+          var nameEl = document.querySelector('[data-testid="user-name"]')
+            || document.querySelector('.user-name')
+            || document.querySelector('header .name')
+            || document.querySelector('.navbar .name')
+            || document.querySelector('[class*="user"] [class*="name"]')
+            || document.querySelector('.dropdown-toggle');
+
+          var name = nameEl?.textContent?.trim() || '';
+
+          // Only send if we found a name and it's different from last sent
+          if (name && name !== window.__lastExtractedName) {
+            window.__lastExtractedName = name;
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'user_info',
+              name: name
+            }));
+          }
+        } catch(e) {}
+      })();
+      true;
+    `;
+
     return (
       <View style={styles.screen}>
         <View style={styles.header}>
@@ -64,14 +106,23 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
             domStorageEnabled
             sharedCookiesEnabled
             thirdPartyCookiesEnabled
+            injectedJavaScriptBeforeContentLoaded={extractUsernameScript}
+            onMessage={handleWebViewMessage}
             style={{ flex: 1 }}
           />
         </View>
         <View style={styles.overlay}>
-          <Text style={styles.overlayTitle}>Enter your name</Text>
+          <Text style={styles.overlayTitle}>
+            {username ? `Welcome, ${username}` : 'Sign in above, then continue'}
+          </Text>
+          {!username && (
+            <Text style={styles.overlayHint}>
+              Auto-detecting your name after login...
+            </Text>
+          )}
           <TextInput
             style={styles.nameInput}
-            placeholder="Your display name"
+            placeholder="Or enter name manually"
             placeholderTextColor="#666666"
             value={username}
             onChangeText={setUsername}
@@ -245,7 +296,13 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  overlayHint: {
+    color: '#888888',
+    fontSize: 12,
     marginBottom: 12,
+    textAlign: 'center',
   },
   nameInput: {
     backgroundColor: '#2a2a3e',
