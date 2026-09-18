@@ -1,16 +1,14 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
+  View, Text, TextInput, StyleSheet, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 const LoginScreen = ({ onLoggedIn, onBack }) => {
-  const webViewRef = useRef(null);
   const [serverUrl, setServerUrl] = useState('');
-  const [detectedUser, setDetectedUser] = useState('');
-  const [pageState, setPageState] = useState('enter_url');
+  const [username, setUsername] = useState('');
   const [error, setError] = useState('');
-  const [webViewLoading, setWebViewLoading] = useState(false);
+  const [showWebView, setShowWebView] = useState(false);
 
   const validateUrl = (url) => {
     const trimmed = url.trim();
@@ -33,131 +31,58 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
       return;
     }
     setError('');
-    const normalized = url.trim().replace(/\/+$/, '');
-    setServerUrl(normalized);
-    setPageState('logging_in');
-    setWebViewLoading(true);
+    setServerUrl(url.trim().replace(/\/+$/, ''));
+    setShowWebView(true);
   }, []);
 
-  const handleNavigationStateChange = useCallback((navState) => {
-    const { url } = navState;
-
-    if (url && !serverUrl) {
-      try {
-        const parsed = new URL(url);
-        setServerUrl(`${parsed.protocol}//${parsed.host}`);
-      } catch (e) {
-        // ignore
-      }
-    }
-  }, [serverUrl]);
-
-  // User manually confirms they've logged in
-  const handleConfirmLogin = useCallback(() => {
-    setPageState('logged_in');
-    setWebViewLoading(false);
-
-    // Try to extract username from the page
-    const extractScript = `
-      try {
-        const nameEl = document.querySelector('[data-testid="user-name"]')
-          || document.querySelector('.user-name')
-          || document.querySelector('header .name')
-          || document.querySelector('.navbar .name')
-          || document.querySelector('[class*="user"] [class*="name"]');
-        const name = nameEl?.textContent?.trim() || '';
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'user_info', name }));
-      } catch(e) {}
-      true;
-    `;
-    webViewRef.current?.injectJavaScript(extractScript);
-  }, []);
-
-  const handleMessage = useCallback((event) => {
-    try {
-      const message = JSON.parse(event.nativeEvent.data);
-      if (message.type === 'user_info' && message.name) {
-        setDetectedUser(message.name);
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, []);
-
-  const handleContinue = useCallback(() => {
-    onLoggedIn({ server: serverUrl, username: detectedUser || 'User' });
-  }, [serverUrl, detectedUser, onLoggedIn]);
+  const handleLoggedIn = useCallback(() => {
+    onLoggedIn({ server: serverUrl, username: username.trim() || 'User' });
+  }, [serverUrl, username, onLoggedIn]);
 
   const handleBack = useCallback(() => {
-    if (pageState === 'logging_in' || pageState === 'logged_in') {
-      setPageState('enter_url');
-      setDetectedUser('');
-      setWebViewLoading(false);
+    if (showWebView) {
+      setShowWebView(false);
     } else {
       onBack();
     }
-  }, [pageState, onBack]);
+  }, [showWebView, onBack]);
 
-  const renderContent = () => {
-    if (pageState === 'enter_url') {
-      return (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.body}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.bodyInner}>
-              <View style={styles.urlSection}>
-                <Text style={styles.label}>Greenlight Server URL</Text>
-                <Text style={styles.subtitle}>
-                  Enter your organization's Greenlight URL. You'll sign in through your browser.
-                </Text>
-                <UrlInput onSubmit={handleUrlSubmit} />
-                {error ? <Text style={styles.errorText}>{error}</Text> : null}
-              </View>
-            </View>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
-      );
-    }
-
+  if (showWebView) {
     return (
-      <View style={styles.webviewWrap}>
-        <WebView
-          ref={webViewRef}
-          source={{ uri: serverUrl }}
-          onNavigationStateChange={handleNavigationStateChange}
-          onMessage={handleMessage}
-          onError={() => setWebViewLoading(false)}
-          onHttpError={() => setWebViewLoading(false)}
-          javaScriptEnabled
-          domStorageEnabled
-          sharedCookiesEnabled
-          thirdPartyCookiesEnabled
-          style={{ flex: 1 }}
-        />
-
-        {pageState === 'logging_in' && (
-          <View style={styles.overlay}>
-            <Text style={styles.overlayTitle}>Sign in on the browser above</Text>
-            <Text style={styles.overlayHint}>
-              {detectedUser ? `Detected: ${detectedUser}` : 'Navigate to your login page and sign in'}
-            </Text>
-            <View style={styles.continueBtn} onTouchEnd={handleConfirmLogin}>
-              <Text style={styles.continueText}>I've logged in →</Text>
-            </View>
+      <View style={styles.screen}>
+        <View style={styles.header}>
+          <View style={styles.headerSide} onTouchEnd={handleBack}>
+            <Text style={styles.headerBack}>← Back</Text>
           </View>
-        )}
-
-        {pageState === 'logged_in' && (
-          <View style={styles.overlay}>
-            <Text style={styles.overlayTitle}>✓ Ready</Text>
-            {detectedUser ? <Text style={styles.overlayUser}>Welcome, {detectedUser}</Text> : null}
-            <View style={styles.continueBtn} onTouchEnd={handleContinue}>
-              <Text style={styles.continueText}>Continue to App →</Text>
-            </View>
+          <Text style={styles.headerTitle}>Sign In</Text>
+          <View style={styles.headerSide} />
+        </View>
+        <View style={styles.webviewWrap}>
+          <WebView
+            source={{ uri: serverUrl }}
+            javaScriptEnabled
+            domStorageEnabled
+            sharedCookiesEnabled
+            thirdPartyCookiesEnabled
+            style={{ flex: 1 }}
+          />
+        </View>
+        <View style={styles.overlay}>
+          <Text style={styles.overlayTitle}>Enter your name</Text>
+          <TextInput
+            style={styles.nameInput}
+            placeholder="Your display name"
+            placeholderTextColor="#666666"
+            value={username}
+            onChangeText={setUsername}
+          />
+          <View style={styles.continueBtn} onTouchEnd={handleLoggedIn}>
+            <Text style={styles.continueText}>Continue →</Text>
           </View>
-        )}
+        </View>
       </View>
     );
-  };
+  }
 
   return (
     <View style={styles.screen}>
@@ -166,13 +91,22 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
           <Text style={styles.headerBack}>← Back</Text>
         </View>
         <Text style={styles.headerTitle}>Login</Text>
-        <View style={styles.headerSide}>
-          {webViewLoading && pageState === 'logging_in' && (
-            <ActivityIndicator size="small" color="#ffffff" />
-          )}
-        </View>
+        <View style={styles.headerSide} />
       </View>
-      {renderContent()}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.body}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.bodyInner}>
+            <View style={styles.urlSection}>
+              <Text style={styles.label}>Greenlight Server URL</Text>
+              <Text style={styles.subtitle}>
+                Enter your organization's Greenlight URL. You'll sign in through your browser.
+              </Text>
+              <UrlInput onSubmit={handleUrlSubmit} />
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </View>
   );
 };
@@ -308,27 +242,26 @@ const styles = StyleSheet.create({
     borderTopColor: '#2a2a3e',
   },
   overlayTitle: {
-    color: '#00cc00',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  overlayUser: {
     color: '#ffffff',
     fontSize: 16,
-    marginBottom: 16,
+    fontWeight: 'bold',
+    marginBottom: 12,
   },
-  overlayHint: {
-    color: '#888888',
-    fontSize: 13,
+  nameInput: {
+    backgroundColor: '#2a2a3e',
+    color: '#ffffff',
+    padding: 12,
+    borderRadius: 8,
+    fontSize: 14,
     marginBottom: 16,
-    textAlign: 'center',
+    width: '100%',
   },
   continueBtn: {
     backgroundColor: '#0066cc',
     paddingVertical: 12,
     paddingHorizontal: 36,
     borderRadius: 10,
+    alignItems: 'center',
   },
   continueText: {
     color: '#ffffff',
