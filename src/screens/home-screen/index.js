@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Modal,
 } from 'react-native';
 import useRoomHistory from '../../hooks/useRoomHistory';
 import RoomCard from '../../components/room-card';
@@ -10,6 +10,8 @@ const HomeScreen = ({ onJoinRoom, onAddRoom, credentials, onLogin, onLogout }) =
   const { rooms, loading, deleteRoom, updateRoom, saveRoom } = useRoomHistory();
   const [searchQuery, setSearchQuery] = useState('');
   const [quickUrl, setQuickUrl] = useState('');
+  const [renameModal, setRenameModal] = useState(null); // room being renamed
+  const [renameText, setRenameText] = useState('');
 
   const handleRoomPress = useCallback((room) => {
     onJoinRoom(room);
@@ -28,19 +30,17 @@ const HomeScreen = ({ onJoinRoom, onAddRoom, credentials, onLogin, onLogout }) =
   }, [deleteRoom]);
 
   const handleRename = useCallback((room) => {
-    Alert.prompt(
-      'Rename Room',
-      'Enter a new name:',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Save', onPress: (newName) => {
-          if (newName?.trim()) updateRoom(room.id, { name: newName.trim() });
-        }},
-      ],
-      'plain-text',
-      room.name || ''
-    );
-  }, [updateRoom]);
+    setRenameModal(room);
+    setRenameText(room.name || '');
+  }, []);
+
+  const handleRenameSave = useCallback(() => {
+    if (renameText.trim() && renameModal) {
+      updateRoom(renameModal.id, { name: renameText.trim() });
+    }
+    setRenameModal(null);
+    setRenameText('');
+  }, [renameModal, renameText, updateRoom]);
 
   const handleQuickJoin = useCallback(() => {
     if (!quickUrl.trim()) return;
@@ -171,6 +171,37 @@ const HomeScreen = ({ onJoinRoom, onAddRoom, credentials, onLogin, onLogout }) =
           Logged in as {credentials.username} @ {credentials.server?.replace(/^https?:\/\//, '')}
         </Text>
       )}
+
+      {/* Rename Modal */}
+      <Modal visible={!!renameModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Rename Room</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={renameText}
+              onChangeText={setRenameText}
+              autoFocus
+              placeholder="Room name"
+              placeholderTextColor="#666666"
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={() => setRenameModal(null)}
+              >
+                <Text style={styles.modalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnSave]}
+                onPress={handleRenameSave}
+              >
+                <Text style={styles.modalBtnText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -319,6 +350,55 @@ const styles = StyleSheet.create({
     fontSize: 10,
     textAlign: 'center',
     paddingVertical: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#2a2a3e',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  modalInput: {
+    backgroundColor: '#1a1a2e',
+    color: '#ffffff',
+    padding: 12,
+    borderRadius: 8,
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  modalBtnCancel: {
+    backgroundColor: '#3a3a4e',
+  },
+  modalBtnSave: {
+    backgroundColor: '#0066cc',
+  },
+  modalBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });
 
