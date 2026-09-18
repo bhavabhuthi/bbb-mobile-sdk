@@ -48,7 +48,12 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
           setUsername(message.userName);
         }
         if (message.rooms?.length) {
-          setCapturedRooms(message.rooms);
+          // Accumulate rooms (don't overwrite) and deduplicate
+          setCapturedRooms((prev) => {
+            const existingIds = new Set(prev.map((r) => r.friendly_id || r.id));
+            const newRooms = message.rooms.filter((r) => !existingIds.has(r.friendly_id || r.id));
+            return [...prev, ...newRooms];
+          });
         }
       }
     } catch (e) {

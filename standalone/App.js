@@ -52,7 +52,7 @@ const StandaloneApp = (props) => {
 
   // Navigate to WebView for a room (from quick URL or room card)
   const handleJoinRoom = useCallback((room) => {
-    // Save/update room in history
+    // Save/update room in history (updates lastJoined timestamp)
     saveRoom(room);
     // Open WebView to resolve the Greenlight join URL
     setWebviewUrl(room.greenlightUrl || room.bbbUrl);
