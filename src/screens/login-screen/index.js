@@ -50,26 +50,28 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
         // ignore
       }
     }
-
-    // Detect successful login
-    if (serverUrl && !url.includes('/login') && !url.includes('/signin')) {
-      setPageState('logged_in');
-      setWebViewLoading(false);
-
-      const extractScript = `
-        try {
-          const nameEl = document.querySelector('[data-testid="user-name"]')
-            || document.querySelector('.user-name')
-            || document.querySelector('header .name')
-            || document.querySelector('.navbar .name');
-          const name = nameEl?.textContent?.trim() || '';
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'user_info', name }));
-        } catch(e) {}
-        true;
-      `;
-      webViewRef.current?.injectJavaScript(extractScript);
-    }
   }, [serverUrl]);
+
+  // User manually confirms they've logged in
+  const handleConfirmLogin = useCallback(() => {
+    setPageState('logged_in');
+    setWebViewLoading(false);
+
+    // Try to extract username from the page
+    const extractScript = `
+      try {
+        const nameEl = document.querySelector('[data-testid="user-name"]')
+          || document.querySelector('.user-name')
+          || document.querySelector('header .name')
+          || document.querySelector('.navbar .name')
+          || document.querySelector('[class*="user"] [class*="name"]');
+        const name = nameEl?.textContent?.trim() || '';
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'user_info', name }));
+      } catch(e) {}
+      true;
+    `;
+    webViewRef.current?.injectJavaScript(extractScript);
+  }, []);
 
   const handleMessage = useCallback((event) => {
     try {
@@ -132,12 +134,24 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
           style={{ flex: 1 }}
         />
 
+        {pageState === 'logging_in' && (
+          <View style={styles.overlay}>
+            <Text style={styles.overlayTitle}>Sign in on the browser above</Text>
+            <Text style={styles.overlayHint}>
+              {detectedUser ? `Detected: ${detectedUser}` : 'Navigate to your login page and sign in'}
+            </Text>
+            <View style={styles.continueBtn} onTouchEnd={handleConfirmLogin}>
+              <Text style={styles.continueText}>I've logged in →</Text>
+            </View>
+          </View>
+        )}
+
         {pageState === 'logged_in' && (
           <View style={styles.overlay}>
-            <Text style={styles.overlayTitle}>✓ Logged In</Text>
+            <Text style={styles.overlayTitle}>✓ Ready</Text>
             {detectedUser ? <Text style={styles.overlayUser}>Welcome, {detectedUser}</Text> : null}
             <View style={styles.continueBtn} onTouchEnd={handleContinue}>
-              <Text style={styles.continueText}>Continue →</Text>
+              <Text style={styles.continueText}>Continue to App →</Text>
             </View>
           </View>
         )}
@@ -303,6 +317,12 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     marginBottom: 16,
+  },
+  overlayHint: {
+    color: '#888888',
+    fontSize: 13,
+    marginBottom: 16,
+    textAlign: 'center',
   },
   continueBtn: {
     backgroundColor: '#0066cc',
