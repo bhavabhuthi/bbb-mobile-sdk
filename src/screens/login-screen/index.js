@@ -11,6 +11,7 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [showWebView, setShowWebView] = useState(false);
+  const [capturedRooms, setCapturedRooms] = useState([]);
 
   const validateUrl = (url) => {
     const trimmed = url.trim();
@@ -37,10 +38,6 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
     setShowWebView(true);
   }, []);
 
-  const handleLoggedIn = useCallback(() => {
-    onLoggedIn({ server: serverUrl, username: username.trim() || 'User' });
-  }, [serverUrl, username, onLoggedIn]);
-
   const handleWebViewMessage = useCallback((event) => {
     try {
       const message = JSON.parse(event.nativeEvent.data);
@@ -50,11 +47,22 @@ const LoginScreen = ({ onLoggedIn, onBack }) => {
         if (message.userName && !username) {
           setUsername(message.userName);
         }
+        if (message.rooms?.length) {
+          setCapturedRooms(message.rooms);
+        }
       }
     } catch (e) {
       // ignore
     }
   }, [username]);
+
+  const handleLoggedIn = useCallback(() => {
+    onLoggedIn({
+      server: serverUrl,
+      username: username.trim() || 'User',
+      rooms: capturedRooms,
+    });
+  }, [serverUrl, username, capturedRooms, onLoggedIn]);
 
   const handleBack = useCallback(() => {
     if (showWebView) {

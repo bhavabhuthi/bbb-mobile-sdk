@@ -91,8 +91,20 @@ const StandaloneApp = (props) => {
   // Handle login/logout
   const handleLogin = useCallback((creds) => {
     saveCredentials(creds);
+    // Save any rooms captured from Greenlight API
+    if (creds.rooms?.length) {
+      creds.rooms.forEach((room) => {
+        saveRoom({
+          name: room.name || room.friendly_id || 'Room',
+          greenlightUrl: `https://${creds.server?.replace(/^https?:\/\//, '')}/rooms/${room.friendly_id}`,
+          bbbHost: creds.server?.replace(/^https?:\/\//, '') || '',
+          roomId: room.friendly_id || room.id || '',
+          icon: '📅',
+        });
+      });
+    }
     setCurrentScreen('home');
-  }, [saveCredentials]);
+  }, [saveCredentials, saveRoom]);
 
   const { default: CoreApp } = require('../App');
 
