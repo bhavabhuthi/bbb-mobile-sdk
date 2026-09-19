@@ -9,6 +9,7 @@ import MiniAudioPlayerIcon from '../../components/audio-player/mini-audio-player
 import TalkingIndicator from '../../components/talking-indicator';
 import TimerIndicator from '../../components/timer/timerIndicator';
 import useAppState from '../../hooks/use-app-state';
+import usePictureInPicture from '../../hooks/usePictureInPicture';
 import PiPView from './pip-view';
 import MediaDiagnostics from '../../components/media-diagnostics';
 import Styled from './styles';
@@ -19,12 +20,15 @@ const DEVICE_WIDTH = parseInt(Dimensions.get('window').width, 10);
 
 const MainConferenceScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
-  // const initialChatMsgsFetched = useSelector((state) => state.client.initialChatMsgsFetched);
   const isPiPEnabled = useSelector((state) => state.layout.isPiPEnabled);
+  const isAudioConnected = useSelector((state) => state.audio.isConnected);
   const navigation = useNavigation();
   const dispatch = useDispatch();
   const appState = useAppState();
   const isAndroid = Platform.OS === 'android';
+
+  // PiP: auto-enter when backgrounded during a meeting with audio
+  const { pipSupported, inPipMode } = usePictureInPicture(true, isAudioConnected);
 
   const isBackgrounded = appState === 'background';
 
@@ -73,7 +77,7 @@ const MainConferenceScreen = () => {
 
   return (
     <>
-      {isBackgrounded && isAndroid && isPiPEnabled ? renderPiP() : renderGridLayout()}
+      {isBackgrounded && isAndroid && (isPiPEnabled || inPipMode) ? renderPiP() : renderGridLayout()}
       <MediaDiagnostics />
     </>
   );
