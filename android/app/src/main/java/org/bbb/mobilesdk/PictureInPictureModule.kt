@@ -28,7 +28,7 @@ class PictureInPictureModule(reactContext: ReactApplicationContext) :
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
                 val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(16, 9))
+                    .setAspectRatio(Rational(9, 16))
                     .build()
                 activity.enterPictureInPictureMode(params)
                 promise.resolve(true)

@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
-import { NativeModules, AppState, Platform } from 'react-native';
+import { NativeModules, Platform, AppState } from 'react-native';
 
 const { PictureInPictureModule } = NativeModules;
 
@@ -8,7 +8,7 @@ const { PictureInPictureModule } = NativeModules;
  * Automatically enters PiP when the app is backgrounded during a meeting.
  *
  * @param {boolean} isInMeeting - Whether the user is currently in a meeting
- * @param {boolean} isAudioConnected - Whether audio is connected (to determine if PiP is useful)
+ * @param {boolean} isAudioConnected - Whether audio is connected (PiP is useful)
  */
 const usePictureInPicture = (isInMeeting, isAudioConnected) => {
   const [pipSupported, setPipSupported] = useState(false);
@@ -33,14 +33,18 @@ const usePictureInPicture = (isInMeeting, isAudioConnected) => {
       // App going to background during a meeting → enter PiP
       if (nextAppState === 'background' && prevState === 'active') {
         if (isInMeeting && isAudioConnected) {
-          PictureInPictureModule.enterPip().catch(() => {});
+          PictureInPictureModule.enterPip().then((success) => {
+            if (success) setInPipMode(true);
+          }).catch(() => {});
         }
       }
 
       // App coming back to foreground → update state
       if (nextAppState === 'active' && prevState === 'background') {
         if (PictureInPictureModule) {
-          PictureInPictureModule.isInPipMode().then(setInPipMode);
+          PictureInPictureModule.isInPipMode().then((isInPip) => {
+            setInPipMode(isInPip);
+          });
         }
       }
     });
@@ -61,9 +65,7 @@ const usePictureInPicture = (isInMeeting, isAudioConnected) => {
   }, []);
 
   // Manually exit PiP (return to full screen)
-  const exitPip = useCallback(async () => {
-    // On Android, tapping the PiP window returns to the app automatically
-    // This is just for tracking state
+  const exitPip = useCallback(() => {
     setInPipMode(false);
   }, []);
 

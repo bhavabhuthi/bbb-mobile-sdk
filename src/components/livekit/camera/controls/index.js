@@ -134,6 +134,24 @@ const LKVideoControls = ({
 
   }, [cameraFacingMode])
 
+  const switchCamera = useCallback(async () => {
+    if (!disabled && localParticipant.isCameraEnabled) {
+      const newFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+      try {
+        await localParticipant.setCameraEnabled(true, {
+          facingMode: newFacingMode,
+          resolution: getCameraCaptureResolution(),
+        });
+        dispatch(showNotificationWithTimeout({ profile: 'cameraToggle' }));
+      } catch (error) {
+        logger.error({
+          logCode: 'livekit_camera_switch_error',
+          extraInfo: { errorMessage: error.message },
+        }, `LiveKit: camera switch failed ${error.message}`);
+      }
+    }
+  }, [disabled, localParticipant, cameraFacingMode, dispatch]);
+
   const onButtonPress = useDebounce(useCallback(() => {
     if (!disabled) {
       if (isActive) {
